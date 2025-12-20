@@ -1,0 +1,7 @@
+﻿venv/
+data/
+results/
+__pycache__/
+*.pkl
+*.pyc
+.DS_Store
