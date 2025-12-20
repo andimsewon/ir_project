@@ -45,9 +45,18 @@ class Evaluator:
                     queries[parts[0]] = parts[1]
         return queries
     
-    def generate_run(self, search_engine, use_reranker=False, top_k=100):
+    def generate_run(self, search_engine, method="bm25", use_reranker=False, 
+                     use_query_expansion=False, top_k=100, hybrid_weight=0.5):
         """
         전체 쿼리에 대해 검색 실행
+        
+        Args:
+            search_engine: SearchEngine 인스턴스
+            method: "bm25", "tfidf", "hybrid"
+            use_reranker: 리랭커 사용 여부
+            use_query_expansion: 쿼리 확장 사용 여부
+            top_k: 반환할 결과 수
+            hybrid_weight: 하이브리드 랭킹 가중치
         
         Returns: {qid: [(doc_id, score), ...], ...}
         """
@@ -56,8 +65,11 @@ class Evaluator:
         for qid, query_text in tqdm(self.queries.items(), desc="Searching"):
             result = search_engine.search(
                 query_text,
+                method=method,
                 top_k=top_k,
-                use_reranker=use_reranker
+                use_reranker=use_reranker,
+                use_query_expansion=use_query_expansion,
+                hybrid_weight=hybrid_weight
             )
             run[qid] = [(r['doc_id'], r['score']) for r in result['results']]
         

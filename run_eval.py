@@ -6,7 +6,9 @@ import os
 import argparse
 from src.indexer import InvertedIndex
 from src.ranker import BM25Ranker
+from src.tfidf_ranker import TFIDFRanker
 from src.reranker import CrossEncoderReranker
+from src.query_expander import QueryExpander
 from src.searcher import SearchEngine
 from src.evaluator import Evaluator
 
@@ -40,10 +42,12 @@ def run_eval(split="validation"):
     index = InvertedIndex()
     index.load(INDEX_PATH)
     
-    print("Loading reranker...")
-    ranker = BM25Ranker(index)
+    print("Loading rankers...")
+    bm25_ranker = BM25Ranker(index)
+    tfidf_ranker = TFIDFRanker(index)
     reranker = CrossEncoderReranker()
-    engine = SearchEngine(index, ranker, reranker)
+    query_expander = QueryExpander(index)
+    engine = SearchEngine(index, bm25_ranker, reranker, tfidf_ranker, query_expander)
     
     print("Loading evaluator...")
     evaluator = Evaluator(qrels_path, queries_path)
@@ -53,7 +57,7 @@ def run_eval(split="validation"):
     print("Evaluating BM25...")
     print("-" * 60)
     
-    run_bm25 = evaluator.generate_run(engine, use_reranker=False, top_k=100)
+    run_bm25 = evaluator.generate_run(engine, method="bm25", use_reranker=False, top_k=100)
     evaluator.save_run_trec(
         run_bm25,
         os.path.join(RESULTS_DIR, f"bm25_{split}.txt"),
@@ -65,12 +69,46 @@ def run_eval(split="validation"):
     for metric, val in results_bm25.items():
         print(f"  {metric}: {val:.4f}")
     
+    # === TF-IDF 평가 ===
+    print("\n" + "-" * 60)
+    print("Evaluating TF-IDF...")
+    print("-" * 60)
+    
+    run_tfidf = evaluator.generate_run(engine, method="tfidf", use_reranker=False, top_k=100)
+    evaluator.save_run_trec(
+        run_tfidf,
+        os.path.join(RESULTS_DIR, f"tfidf_{split}.txt"),
+        "TF-IDF"
+    )
+    results_tfidf = evaluator.evaluate(run_tfidf)
+    
+    print("\nTF-IDF Results:")
+    for metric, val in results_tfidf.items():
+        print(f"  {metric}: {val:.4f}")
+    
+    # === Hybrid 평가 ===
+    print("\n" + "-" * 60)
+    print("Evaluating Hybrid (BM25 + TF-IDF)...")
+    print("-" * 60)
+    
+    run_hybrid = evaluator.generate_run(engine, method="hybrid", use_reranker=False, top_k=100)
+    evaluator.save_run_trec(
+        run_hybrid,
+        os.path.join(RESULTS_DIR, f"hybrid_{split}.txt"),
+        "Hybrid"
+    )
+    results_hybrid = evaluator.evaluate(run_hybrid)
+    
+    print("\nHybrid Results:")
+    for metric, val in results_hybrid.items():
+        print(f"  {metric}: {val:.4f}")
+    
     # === BM25 + Reranker 평가 ===
     print("\n" + "-" * 60)
     print("Evaluating BM25 + Reranker...")
     print("-" * 60)
     
-    run_rerank = evaluator.generate_run(engine, use_reranker=True, top_k=100)
+    run_rerank = evaluator.generate_run(engine, method="bm25", use_reranker=True, top_k=100)
     evaluator.save_run_trec(
         run_rerank,
         os.path.join(RESULTS_DIR, f"rerank_{split}.txt"),
@@ -86,15 +124,15 @@ def run_eval(split="validation"):
     print("\n" + "=" * 60)
     print("Comparison")
     print("=" * 60)
-    print(f"{'Metric':<12} {'BM25':>10} {'Reranker':>10} {'Diff':>10}")
-    print("-" * 44)
+    print(f"{'Metric':<12} {'BM25':>10} {'TF-IDF':>10} {'Hybrid':>10} {'Reranker':>10}")
+    print("-" * 54)
     
     for metric in results_bm25:
-        v1 = results_bm25[metric]
-        v2 = results_rerank[metric]
-        diff = v2 - v1
-        sign = "+" if diff > 0 else ""
-        print(f"{metric:<12} {v1:>10.4f} {v2:>10.4f} {sign}{diff:>9.4f}")
+        v_bm25 = results_bm25[metric]
+        v_tfidf = results_tfidf[metric]
+        v_hybrid = results_hybrid[metric]
+        v_rerank = results_rerank[metric]
+        print(f"{metric:<12} {v_bm25:>10.4f} {v_tfidf:>10.4f} {v_hybrid:>10.4f} {v_rerank:>10.4f}")
     
     # 결과 저장
     summary_path = os.path.join(RESULTS_DIR, f"summary_{split}.txt")
@@ -106,19 +144,27 @@ def run_eval(split="validation"):
         for m, v in results_bm25.items():
             f.write(f"  {m}: {v:.4f}\n")
         
+        f.write("\nTF-IDF:\n")
+        for m, v in results_tfidf.items():
+            f.write(f"  {m}: {v:.4f}\n")
+        
+        f.write("\nHybrid (BM25 + TF-IDF):\n")
+        for m, v in results_hybrid.items():
+            f.write(f"  {m}: {v:.4f}\n")
+        
         f.write("\nBM25 + Reranker:\n")
         for m, v in results_rerank.items():
             f.write(f"  {m}: {v:.4f}\n")
         
         f.write("\nComparison:\n")
-        f.write(f"{'Metric':<12} {'BM25':>10} {'Reranker':>10} {'Diff':>10}\n")
-        f.write("-" * 44 + "\n")
+        f.write(f"{'Metric':<12} {'BM25':>10} {'TF-IDF':>10} {'Hybrid':>10} {'Reranker':>10}\n")
+        f.write("-" * 54 + "\n")
         for metric in results_bm25:
-            v1 = results_bm25[metric]
-            v2 = results_rerank[metric]
-            diff = v2 - v1
-            sign = "+" if diff > 0 else ""
-            f.write(f"{metric:<12} {v1:>10.4f} {v2:>10.4f} {sign}{diff:>9.4f}\n")
+            v_bm25 = results_bm25[metric]
+            v_tfidf = results_tfidf[metric]
+            v_hybrid = results_hybrid[metric]
+            v_rerank = results_rerank[metric]
+            f.write(f"{metric:<12} {v_bm25:>10.4f} {v_tfidf:>10.4f} {v_hybrid:>10.4f} {v_rerank:>10.4f}\n")
     
     print(f"\nResults saved to {summary_path}")
 
@@ -126,7 +172,15 @@ def run_eval(split="validation"):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--split", default="validation", 
-                       choices=["training", "validation", "test"])
+                       choices=["training", "validation", "test"],
+                       help="Dataset split to evaluate on")
     args = parser.parse_args()
+    
+    # Test set 사용 시 주의사항
+    if args.split == "test":
+        print("\n" + "!" * 60)
+        print("WARNING: Using test set for evaluation.")
+        print("Make sure you haven't tuned your system on test set!")
+        print("!" * 60 + "\n")
     
     run_eval(args.split)

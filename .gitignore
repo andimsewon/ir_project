@@ -1,7 +1,37 @@
-﻿venv/
-data/
-results/
+﻿# Python
 __pycache__/
-*.pkl
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Data files (제출 시 제외)
+data/documents.tsv
+data/index.pkl
+data/*.tsv
+data/*.trec
+
+# Results (제출 시 포함)
+# results/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/
+
+# Logs
+*.log
+
+# Config (민감 정보)
+config/secret_key
