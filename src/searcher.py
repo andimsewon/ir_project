@@ -13,12 +13,13 @@ class SearchEngine:
     BM25/TF-IDF/하이브리드 랭킹 + 선택적 Reranking + 쿼리 확장
     """
     
-    def __init__(self, index, ranker, reranker=None, tfidf_ranker=None, query_expander=None):
+    def __init__(self, index, ranker, reranker=None, tfidf_ranker=None, query_expander=None, dense_retriever=None):
         self.index = index
         self.ranker = ranker  # BM25 ranker
         self.tfidf_ranker = tfidf_ranker  # TF-IDF ranker (optional)
         self.reranker = reranker
         self.query_expander = query_expander
+        self.dense_retriever = dense_retriever
         self.tokenizer = Tokenizer()
     
     def search(self, query, top_k=10, method="bm25", use_reranker=False, 
@@ -66,6 +67,16 @@ class SearchEngine:
                 raise ValueError("TF-IDF ranker not provided for hybrid ranking")
             ranked_results = self._hybrid_score(query, hybrid_weight, num_candidates)
             method_name = f"Hybrid (BM25:{hybrid_weight:.1f} + TF-IDF:{1-hybrid_weight:.1f})"
+        elif method == "dense":
+            if not self.dense_retriever:
+                raise ValueError("Dense retriever not provided")
+            ranked_results = self.dense_retriever.search(query, top_k=num_candidates)
+            method_name = "Dense"
+        elif method == "hybrid_dense":
+            if not self.dense_retriever:
+                raise ValueError("Dense retriever not provided for hybrid dense ranking")
+            ranked_results = self._hybrid_dense_score(query, hybrid_weight, num_candidates)
+            method_name = f"Hybrid (BM25:{hybrid_weight:.1f} + Dense:{1-hybrid_weight:.1f})"
         else:
             raise ValueError(f"Unknown method: {method}")
         
@@ -138,6 +149,29 @@ class SearchEngine:
         # 점수순 정렬
         ranked = sorted(doc_scores.items(), key=lambda x: x[1], reverse=True)
         
+        return ranked[:top_k]
+
+    def _hybrid_dense_score(self, query, bm25_weight, top_k=100):
+        bm25_results = self.ranker.score(query, top_k=top_k)
+        dense_results = self.dense_retriever.search(query, top_k=top_k)
+
+        bm25_max = max((score for _, score in bm25_results), default=1.0)
+        dense_scores = [score for _, score in dense_results]
+        dense_min = min(dense_scores, default=0.0)
+        dense_max = max(dense_scores, default=1.0)
+        dense_denom = dense_max - dense_min if dense_max != dense_min else 1.0
+
+        doc_scores = defaultdict(float)
+
+        for doc_id, score in bm25_results:
+            normalized_score = score / bm25_max if bm25_max > 0 else 0
+            doc_scores[doc_id] += bm25_weight * normalized_score
+
+        for doc_id, score in dense_results:
+            normalized_score = (score - dense_min) / dense_denom
+            doc_scores[doc_id] += (1 - bm25_weight) * normalized_score
+
+        ranked = sorted(doc_scores.items(), key=lambda x: x[1], reverse=True)
         return ranked[:top_k]
     
     def _extract_snippet(self, doc_id, query, max_len=200):

@@ -9,15 +9,17 @@ from src.ranker import BM25Ranker
 from src.tfidf_ranker import TFIDFRanker
 from src.reranker import CrossEncoderReranker
 from src.query_expander import QueryExpander
+from src.dense_retriever import DenseRetriever
 from src.searcher import SearchEngine
 from src.evaluator import Evaluator
 
 DATA_DIR = "data"
 INDEX_PATH = os.path.join(DATA_DIR, "index.pkl")
+DENSE_INDEX_PATH = os.path.join(DATA_DIR, "dense_index.pt")
 RESULTS_DIR = "results"
 
 
-def run_eval(split="validation"):
+def run_eval(split="validation", include_dense=False):
     # 경로 설정
     qrels_path = os.path.join(DATA_DIR, f"qrels_{split}.tsv")
     queries_path = os.path.join(DATA_DIR, f"queries_{split}.tsv")
@@ -47,7 +49,17 @@ def run_eval(split="validation"):
     tfidf_ranker = TFIDFRanker(index)
     reranker = None
     query_expander = QueryExpander(index)
-    engine = SearchEngine(index, bm25_ranker, reranker, tfidf_ranker, query_expander)
+
+    dense_retriever = None
+    if include_dense:
+        if os.path.exists(DENSE_INDEX_PATH):
+            print("Loading dense index...")
+            dense_retriever = DenseRetriever()
+            dense_retriever.load(DENSE_INDEX_PATH)
+        else:
+            print(f"Warning: {DENSE_INDEX_PATH} not found. Skipping dense retrieval.")
+
+    engine = SearchEngine(index, bm25_ranker, reranker, tfidf_ranker, query_expander, dense_retriever)
     
     print("Loading evaluator...")
     evaluator = Evaluator(qrels_path, queries_path)
@@ -103,6 +115,41 @@ def run_eval(split="validation"):
     for metric, val in results_hybrid.items():
         print(f"  {metric}: {val:.4f}")
     
+    results_dense = None
+    results_hybrid_dense = None
+    if include_dense and dense_retriever:
+        print("\n" + "-" * 60)
+        print("Evaluating Dense Retrieval...")
+        print("-" * 60)
+
+        run_dense = evaluator.generate_run(engine, method="dense", use_reranker=False, top_k=100)
+        evaluator.save_run_trec(
+            run_dense,
+            os.path.join(RESULTS_DIR, f"dense_{split}.txt"),
+            "Dense"
+        )
+        results_dense = evaluator.evaluate(run_dense)
+
+        print("\nDense Results:")
+        for metric, val in results_dense.items():
+            print(f"  {metric}: {val:.4f}")
+
+        print("\n" + "-" * 60)
+        print("Evaluating Hybrid (BM25 + Dense)...")
+        print("-" * 60)
+
+        run_hybrid_dense = evaluator.generate_run(engine, method="hybrid_dense", use_reranker=False, top_k=100)
+        evaluator.save_run_trec(
+            run_hybrid_dense,
+            os.path.join(RESULTS_DIR, f"hybrid_dense_{split}.txt"),
+            "HybridDense"
+        )
+        results_hybrid_dense = evaluator.evaluate(run_hybrid_dense)
+
+        print("\nHybrid (BM25 + Dense) Results:")
+        for metric, val in results_hybrid_dense.items():
+            print(f"  {metric}: {val:.4f}")
+
     # === BM25 + Reranker 평가 ===
     print("\n" + "-" * 60)
     print("Evaluating BM25 + Reranker...")
@@ -154,6 +201,16 @@ def run_eval(split="validation"):
         for m, v in results_hybrid.items():
             f.write(f"  {m}: {v:.4f}\n")
         
+        if results_dense:
+            f.write("\nDense:\n")
+            for m, v in results_dense.items():
+                f.write(f"  {m}: {v:.4f}\n")
+        
+        if results_hybrid_dense:
+            f.write("\nHybrid (BM25 + Dense):\n")
+            for m, v in results_hybrid_dense.items():
+                f.write(f"  {m}: {v:.4f}\n")
+        
         f.write("\nBM25 + Reranker:\n")
         for m, v in results_rerank.items():
             f.write(f"  {m}: {v:.4f}\n")
@@ -176,6 +233,8 @@ if __name__ == "__main__":
     parser.add_argument("--split", default="validation", 
                        choices=["training", "validation", "test"],
                        help="Dataset split to evaluate on")
+    parser.add_argument("--dense", action="store_true",
+                       help="Include dense retrieval evaluation (requires data/dense_index.pt)")
     args = parser.parse_args()
     
     # Test set 사용 시 주의사항
@@ -185,4 +244,4 @@ if __name__ == "__main__":
         print("Make sure you haven't tuned your system on test set!")
         print("!" * 60 + "\n")
     
-    run_eval(args.split)
+    run_eval(args.split, include_dense=args.dense)

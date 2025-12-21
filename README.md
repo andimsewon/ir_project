@@ -586,3 +586,36 @@ Error: data/documents.tsv not found
 **프로젝트 기간**: 2025년 11월 - 12월  
 **프로그래밍 언어**: Python 3.x  
 **프레임워크**: Streamlit, PyTorch, Transformers
+
+
+---
+
+## Dense Retrieval (HuggingFace)
+
+This project now supports a bi-encoder dense retriever and a BM25 + Dense hybrid.
+This improves accuracy, especially when combined with the reranker.
+
+### 1) Build Dense Index
+
+```bash
+python build_dense_index.py --model BAAI/bge-base-en-v1.5 --batch-size 64 --max-length 512
+```
+
+Outputs: `data/dense_index.pt`
+
+### 2) Evaluate with Dense Retrieval
+
+```bash
+python run_eval.py --dense
+```
+
+This will add dense and hybrid-dense runs in `results/`.
+
+### 3) Use in Search Engine
+
+Use `method="dense"` or `method="hybrid_dense"` in `SearchEngine.search()`.
+For best accuracy, combine `hybrid_dense` with the reranker.
+
+### Suggested Models (Accuracy Focus)
+- Dense retriever: `BAAI/bge-base-en-v1.5` or `intfloat/e5-base-v2`
+- Reranker: `BAAI/bge-reranker-v2-m3` (slower, highest accuracy)

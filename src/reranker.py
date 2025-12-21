@@ -63,13 +63,8 @@ class CrossEncoderReranker:
             
             # 모델 최적화 (CPU에서 더 빠르게)
             if self.device == "cpu":
-                # CPU 최적화
-                try:
-                    import torch.jit
-                    # TorchScript로 컴파일 시도 (선택적)
-                    pass
-                except:
-                    pass
+                # CPU 최적화 (추후 적용 가능)
+                pass
             
             print(f"[Reranker] Model loaded successfully")
         except Exception as e:
