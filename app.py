@@ -1,13 +1,130 @@
 """
-웹 UI (Streamlit)
-검색 데모 페이지
+구글 스타일 검색 엔진 UI
+심플하고 창의적인 인터페이스
 """
 import streamlit as st
 import time
 import re
 import os
+from datetime import datetime
 
-st.set_page_config(page_title="Search Engine Demo", page_icon="🔍", layout="wide")
+# 페이지 설정
+st.set_page_config(
+    page_title="Search Engine",
+    page_icon="🔍",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
+# CSS 스타일
+st.markdown("""
+<style>
+    /* 구글 스타일 검색창 */
+    .stTextInput > div > div > input {
+        border-radius: 24px;
+        border: 1px solid #dfe1e5;
+        padding: 12px 20px;
+        font-size: 16px;
+        box-shadow: 0 2px 5px 1px rgba(64,60,67,.16);
+        transition: box-shadow 0.3s;
+    }
+    .stTextInput > div > div > input:focus {
+        box-shadow: 0 2px 8px 1px rgba(64,60,67,.24);
+        border-color: transparent;
+        outline: none;
+    }
+    
+    /* 결과 카드 스타일 */
+    .result-card {
+        padding: 20px 0;
+        border-bottom: 1px solid #ebebeb;
+        transition: background-color 0.2s;
+    }
+    .result-card:hover {
+        background-color: #f8f9fa;
+    }
+    
+    /* 하이라이트 스타일 */
+    .highlight {
+        background-color: #fff176;
+        padding: 2px 0;
+        font-weight: 500;
+    }
+    
+    /* 점수 배지 */
+    .score-badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 12px;
+        background-color: #e8f0fe;
+        color: #1967d2;
+        font-size: 11px;
+        font-weight: 500;
+    }
+    
+    /* 메인 컨테이너 */
+    .main-container {
+        max-width: 650px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+    
+    /* 검색 통계 */
+    .search-stats {
+        color: #70757a;
+        font-size: 14px;
+        padding: 10px 0;
+    }
+    
+    /* 필터 버튼 */
+    .filter-btn {
+        padding: 8px 16px;
+        border-radius: 18px;
+        border: 1px solid #dadce0;
+        background: white;
+        cursor: pointer;
+        font-size: 14px;
+        margin-right: 8px;
+        transition: all 0.2s;
+    }
+    .filter-btn:hover {
+        box-shadow: 0 1px 2px rgba(60,64,67,.3);
+    }
+    .filter-btn.active {
+        background-color: #1a73e8;
+        color: white;
+        border-color: #1a73e8;
+    }
+    
+    /* 페이지네이션 */
+    .pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 20px;
+        padding: 30px 0;
+    }
+    
+    /* 로딩 애니메이션 */
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+    .loading {
+        animation: pulse 1.5s ease-in-out infinite;
+    }
+    
+    /* 숨기기 */
+    .hide {
+        display: none;
+    }
+    
+    /* 헤더 숨기기 */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+</style>
+""", unsafe_allow_html=True)
 
 
 @st.cache_resource
@@ -29,188 +146,343 @@ def load_engine():
     
     bm25_ranker = BM25Ranker(index)
     tfidf_ranker = TFIDFRanker(index)
-    reranker = CrossEncoderReranker()
-    query_expander = QueryExpander(index)
+    
+    # 최적화된 리랭커 (균형잡힌 성능)
+    reranker = CrossEncoderReranker(model_size="balanced")
+    
+    # 임베딩 기반 쿼리 확장 (선택적)
+    query_expander = QueryExpander(index, use_embedding=False)  # False로 설정하면 빠름
     
     return SearchEngine(index, bm25_ranker, reranker, tfidf_ranker, query_expander)
 
 
-def highlight(text, query):
-    """쿼리 단어 하이라이트"""
-    words = set(re.findall(r'\w+', query.lower()))
+def highlight_text(text, query, max_length=300):
+    """쿼리 단어 하이라이트 및 스니펫 생성"""
+    if not text:
+        return ""
     
-    def replace(m):
-        w = m.group(0)
-        if w.lower() in words:
-            return f"**{w}**"
-        return w
+    # 쿼리 단어 추출 (소문자로 정규화)
+    query_terms = set(re.findall(r'\b\w+\b', query.lower()))
     
-    return re.sub(r'\b\w+\b', replace, text)
+    if not query_terms:
+        # 쿼리 단어가 없으면 원본 텍스트 반환 (길이 제한)
+        if len(text) > max_length:
+            return text[:max_length] + "..."
+        return text
+    
+    # 텍스트를 문장 단위로 분리
+    sentences = re.split(r'[.!?]\s+', text)
+    
+    # 쿼리 단어가 가장 많이 포함된 문장 찾기
+    best_sentence = ""
+    best_score = 0
+    
+    for sentence in sentences:
+        words = re.findall(r'\b\w+\b', sentence.lower())
+        score = sum(1 for w in words if w in query_terms)
+        if score > best_score:
+            best_score = score
+            best_sentence = sentence
+    
+    # 최선의 문장이 없으면 원본 텍스트 사용
+    if not best_sentence:
+        best_sentence = text[:200]
+    
+    # 하이라이트 적용 (원본 대소문자 유지)
+    words_pattern = re.compile(r'\b\w+\b', re.IGNORECASE)
+    
+    def highlight_word(match):
+        word = match.group(0)
+        if word.lower() in query_terms:
+            return f'<span class="highlight">{word}</span>'
+        return word
+    
+    highlighted = words_pattern.sub(highlight_word, best_sentence)
+    
+    # 길이 제한 (HTML 태그 제외하고 계산)
+    plain_text = re.sub(r'<[^>]+>', '', highlighted)
+    if len(plain_text) > max_length:
+        # 하이라이트 태그를 고려하여 자르기
+        truncated = ""
+        tag_open = False
+        for char in highlighted:
+            if char == '<':
+                tag_open = True
+            if not tag_open:
+                truncated += char
+                if len(re.sub(r'<[^>]+>', '', truncated)) >= max_length:
+                    break
+            if char == '>':
+                tag_open = False
+        highlighted = truncated + "..."
+    
+    return highlighted
+
+
+def extract_title(doc_text, query):
+    """문서에서 제목 추출 (첫 문장 또는 쿼리 관련 부분)"""
+    if not doc_text:
+        return "Untitled Document"
+    
+    # 첫 문장을 제목으로 사용
+    first_sentence = doc_text.split('.')[0].strip()
+    
+    # 쿼리 단어가 포함된 경우 해당 부분 우선
+    query_terms = set(re.findall(r'\b\w+\b', query.lower()))
+    words = doc_text.split()
+    
+    for i, word in enumerate(words[:50]):  # 처음 50단어만 확인
+        if word.lower().strip('.,!?;:"\'') in query_terms:
+            # 해당 단어 주변을 제목으로
+            start = max(0, i - 5)
+            end = min(len(words), i + 15)
+            title = ' '.join(words[start:end])
+            if len(title) > 100:
+                title = title[:100] + "..."
+            return title
+    
+    # 기본: 첫 문장
+    if len(first_sentence) > 100:
+        first_sentence = first_sentence[:100] + "..."
+    return first_sentence or "Document"
 
 
 def main():
-    st.title("🔍 Information Retrieval Search Engine")
-    st.caption("wikir/en1k dataset | BM25 + TF-IDF + Cross-Encoder Reranker")
-    
-    # 검색 히스토리 초기화
-    if 'search_history' not in st.session_state:
-        st.session_state.search_history = []
+    # 세션 상태 초기화
+    if 'search_results' not in st.session_state:
+        st.session_state.search_results = None
+    if 'current_page' not in st.session_state:
+        st.session_state.current_page = 1
+    if 'results_per_page' not in st.session_state:
+        st.session_state.results_per_page = 10
+    if 'filter_method' not in st.session_state:
+        st.session_state.filter_method = "bm25"
+    if 'method_option' not in st.session_state:
+        st.session_state.method_option = "BM25"
+    if 'use_reranker_opt' not in st.session_state:
+        st.session_state.use_reranker_opt = False
+    if 'use_expansion_opt' not in st.session_state:
+        st.session_state.use_expansion_opt = False
+    if 'hybrid_weight' not in st.session_state:
+        st.session_state.hybrid_weight = 0.6
     
     engine = load_engine()
     
     if engine is None:
-        st.error("Index not found. Run these commands first:")
-        st.code("python download_data.py\npython build_index.py")
+        st.error("⚠️ 인덱스를 찾을 수 없습니다. 먼저 다음 명령을 실행하세요:")
+        st.code("python download_data.py\npython build_index.py", language="bash")
         return
     
-    # 사이드바
-    st.sidebar.header("Settings")
-    
-    ranking_method = st.sidebar.selectbox(
-        "Ranking Method",
-        ["BM25", "TF-IDF", "Hybrid (BM25 + TF-IDF)"],
-        index=0
-    )
-    
-    use_reranker = st.sidebar.checkbox("Use Reranker", value=False)
-    use_query_expansion = st.sidebar.checkbox("Query Expansion", value=False)
-    
-    num_results = st.sidebar.slider("Results per page", 5, 30, 10)
-    
-    # 하이브리드 가중치 설정
-    if ranking_method == "Hybrid (BM25 + TF-IDF)":
-        hybrid_weight = st.sidebar.slider("BM25 Weight", 0.0, 1.0, 0.5, 0.1)
-    else:
-        hybrid_weight = 0.5
-    
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("**Index Info**")
-    st.sidebar.markdown(f"- Documents: {engine.index.total_docs:,}")
-    st.sidebar.markdown(f"- Terms: {len(engine.index.posting_list):,}")
-    
-    # 검색 입력
-    col1, col2 = st.columns([5, 1])
-    with col1:
-        query = st.text_input("Search", placeholder="Enter query...")
-    with col2:
-        st.markdown("<br>", unsafe_allow_html=True)
-        search_btn = st.button("Search", use_container_width=True)
-    
-    # 검색 히스토리 표시
-    if st.session_state.search_history:
-        with st.expander("📜 Search History", expanded=False):
-            for idx, hist in enumerate(reversed(st.session_state.search_history[-10:])):
-                col1, col2 = st.columns([4, 1])
-                col1.text(f"{hist['query']} ({hist['method']})")
-                if col2.button("🔍", key=f"hist_{idx}"):
-                    query = hist['query']
-                    search_btn = True
-    
-    # 예시 쿼리
-    st.markdown("**Examples:**")
-    examples = ["machine learning", "world war II", "climate change", "python programming"]
-    cols = st.columns(len(examples))
-    for i, ex in enumerate(examples):
-        if cols[i].button(ex, key=f"ex_{i}"):
-            query = ex
-            search_btn = True
-    
-    # 검색 실행
-    if search_btn and query:
-        # 메서드 매핑
-        method_map = {
-            "BM25": "bm25",
-            "TF-IDF": "tfidf",
-            "Hybrid (BM25 + TF-IDF)": "hybrid"
-        }
-        search_method = method_map[ranking_method]
-        
-        with st.spinner("Searching..."):
-            start = time.time()
-            result = engine.search(
-                query, 
-                top_k=num_results,
-                method=search_method,
-                use_reranker=use_reranker,
-                use_query_expansion=use_query_expansion,
-                hybrid_weight=hybrid_weight
+    # 메인 컨테이너
+    with st.container():
+        # 로고 및 검색창 영역
+        col1, col2, col3 = st.columns([1, 3, 1])
+        with col2:
+            st.markdown("<br><br>", unsafe_allow_html=True)
+            st.markdown(
+                '<h1 style="text-align: center; font-size: 90px; margin-bottom: 30px;">🔍</h1>',
+                unsafe_allow_html=True
             )
-            elapsed = time.time() - start
+            
+            # 검색 입력
+            query_input = st.text_input(
+                "",
+                value=st.session_state.get('search_input', ''),
+                placeholder="검색어를 입력하세요...",
+                key="search_input",
+                label_visibility="collapsed"
+            )
+            
+            # 검색 버튼 (Enter 키로도 작동)
+            col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
+            with col_btn2:
+                search_clicked = st.button("검색", use_container_width=True, type="primary")
+            
+            # 검색어 업데이트
+            query = query_input.strip() if query_input else ""
+            
+            # 필터 옵션 (검색 전에 표시)
+            if not st.session_state.search_results:
+                st.markdown("<br>", unsafe_allow_html=True)
+                filter_cols = st.columns(5)
+                methods = [
+                    ("BM25", "bm25"),
+                    ("TF-IDF", "tfidf"),
+                    ("하이브리드", "hybrid"),
+                    ("리랭커", "rerank"),
+                    ("쿼리 확장", "expansion")
+                ]
+                for i, (label, method) in enumerate(methods):
+                    with filter_cols[i]:
+                        if st.button(label, key=f"filter_{method}", use_container_width=True):
+                            st.session_state.filter_method = method
+    
+    # 사이드바 (고급 설정) - 먼저 정의
+    with st.sidebar:
+        st.header("⚙️ 고급 설정")
         
-        # 검색 히스토리에 추가
-        st.session_state.search_history.append({
-            'query': query,
-            'method': result['method'],
-            'num_results': len(result['results']),
-            'elapsed': elapsed
-        })
+        if engine:
+            st.markdown(f"**인덱스 정보**")
+            st.markdown(f"- 문서 수: {engine.index.total_docs:,}")
+            st.markdown(f"- 어휘 크기: {len(engine.index.posting_list):,}")
+            st.markdown(f"- 평균 문서 길이: {engine.index.avg_doc_len:.1f}")
         
         st.markdown("---")
-        st.markdown(f"### Results ({len(result['results'])} found, {elapsed:.3f}s)")
-        st.markdown(f"**Method:** `{result['method']}`")
+        st.markdown("**검색 방법**")
+        method_option = st.selectbox(
+            "랭킹 방법",
+            ["BM25", "TF-IDF", "하이브리드"],
+            index=["BM25", "TF-IDF", "하이브리드"].index(st.session_state.method_option) if st.session_state.method_option in ["BM25", "TF-IDF", "하이브리드"] else 0,
+            key="method_selectbox"
+        )
+        st.session_state.method_option = method_option
         
-        if result.get('expanded_query') and result['expanded_query'] != query:
-            st.info(f"**Expanded Query:** {result['expanded_query']}")
+        use_reranker_opt = st.checkbox("리랭커 사용", value=st.session_state.use_reranker_opt, key="reranker_checkbox")
+        st.session_state.use_reranker_opt = use_reranker_opt
         
-        # 쿼리 분석
-        with st.expander("📊 Query Analysis", expanded=False):
-            query_terms = engine.tokenizer.tokenize(query)
-            if query_terms:
-                st.markdown("**Query Terms:**")
-                term_info = []
-                for term in query_terms:
-                    df = engine.index.get_doc_freq(term)
-                    term_info.append({
-                        'Term': term,
-                        'Document Frequency': f"{df:,}",
-                        'IDF': f"{engine.ranker._calc_idf(term):.4f}"
-                    })
-                st.table(term_info)
+        use_expansion_opt = st.checkbox("쿼리 확장", value=st.session_state.use_expansion_opt, key="expansion_checkbox")
+        st.session_state.use_expansion_opt = use_expansion_opt
+        
+        if method_option == "하이브리드":
+            hybrid_weight = st.slider("BM25 가중치", 0.0, 1.0, st.session_state.hybrid_weight, 0.1, key="hybrid_slider")
+            st.session_state.hybrid_weight = hybrid_weight
+    
+    # 검색 실행
+    if (search_clicked or query) and query.strip():
+        with st.spinner("검색 중..."):
+            start_time = time.time()
+            
+            # 필터에 따른 검색 설정
+            use_reranker = st.session_state.filter_method == "rerank" or st.session_state.use_reranker_opt
+            use_expansion = st.session_state.filter_method == "expansion" or st.session_state.use_expansion_opt
+            method = "bm25"
+            
+            if st.session_state.filter_method == "tfidf" or st.session_state.method_option == "TF-IDF":
+                method = "tfidf"
+            elif st.session_state.filter_method == "hybrid" or st.session_state.method_option == "하이브리드":
+                method = "hybrid"
+            
+            result = engine.search(
+                query,
+                top_k=100,  # 더 많은 결과를 가져와서 페이지네이션
+                method=method,
+                use_reranker=use_reranker,
+                use_query_expansion=use_expansion,
+                hybrid_weight=st.session_state.hybrid_weight
+            )
+            
+            elapsed = time.time() - start_time
+            st.session_state.search_results = result
+            st.session_state.search_time = elapsed
+            st.session_state.current_page = 1
+    
+    # 검색 결과 표시
+    if st.session_state.search_results:
+        result = st.session_state.search_results
+        
+        # 검색 통계
+        st.markdown(f"""
+        <div class="search-stats">
+            약 {len(result['results']):,}개 결과 ({st.session_state.search_time:.3f}초)
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # 확장된 쿼리 표시
+        if result.get('expanded_query') and result['expanded_query'] != result['query']:
+            st.info(f"💡 확장된 쿼리: **{result['expanded_query']}**")
         
         if not result['results']:
-            st.warning("No results found.")
-            return
-        
-        # 페이지네이션
-        total_results = len(result['results'])
-        if 'page' not in st.session_state:
-            st.session_state.page = 1
-        
-        if total_results > num_results:
-            total_pages = (total_results - 1) // num_results + 1
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col1:
-                if st.button("◀ Previous", disabled=(st.session_state.page == 1)):
-                    st.session_state.page -= 1
-            with col2:
-                st.markdown(f"**Page {st.session_state.page} of {total_pages}**", 
-                           help="Use Previous/Next buttons to navigate")
-            with col3:
-                if st.button("Next ▶", disabled=(st.session_state.page >= total_pages)):
-                    st.session_state.page += 1
-            
-            start_idx = (st.session_state.page - 1) * num_results
-            end_idx = start_idx + num_results
-            display_results = result['results'][start_idx:end_idx]
+            st.warning("검색 결과가 없습니다. 다른 검색어를 시도해보세요.")
+            st.markdown("**추천 검색어:**")
+            examples = ["machine learning", "artificial intelligence", "world war", "climate change"]
+            cols = st.columns(len(examples))
+            for i, ex in enumerate(examples):
+                if cols[i].button(ex, key=f"ex_no_results_{i}"):
+                    # 검색어를 세션 상태에 저장하고 검색 실행
+                    st.session_state.search_input = ex
+                    st.session_state.search_results = None  # 결과 초기화
+                    st.rerun()
         else:
-            display_results = result['results']
-            st.session_state.page = 1
-        
-        # 결과 표시
-        for r in display_results:
-            with st.container():
-                c1, c2 = st.columns([6, 1])
-                c1.markdown(f"**#{r['rank']} Doc {r['doc_id']}**")
-                c2.markdown(f"`{r['score']:.4f}`")
+            # 페이지네이션 계산
+            total_results = len(result['results'])
+            total_pages = (total_results - 1) // st.session_state.results_per_page + 1
+            start_idx = (st.session_state.current_page - 1) * st.session_state.results_per_page
+            end_idx = start_idx + st.session_state.results_per_page
+            page_results = result['results'][start_idx:end_idx]
+            
+            # 결과 표시
+            for r in page_results:
+                doc_id = r['doc_id']
+                score = r['score']
+                snippet = r['snippet']
+                full_text = engine.get_document(doc_id)
                 
-                snippet = highlight(r['snippet'], query)
-                st.markdown(snippet)
+                # 제목 추출
+                title = extract_title(full_text, result['query'])
+                highlighted_title = highlight_text(title, result['query'], max_length=150)
                 
-                with st.expander("Full document"):
-                    full = engine.get_document(r['doc_id'])
-                    st.text_area("", full[:3000], height=150, key=f"doc_{r['doc_id']}")
+                # 스니펫 하이라이트
+                highlighted_snippet = highlight_text(snippet, result['query'])
                 
-                st.markdown("---")
+                # 결과 카드
+                st.markdown(f"""
+                <div class="result-card">
+                    <h3 style="margin: 0; font-size: 20px; color: #1a0dab; margin-bottom: 5px;">
+                        {highlighted_title}
+                    </h3>
+                    <div style="color: #006621; font-size: 14px; margin-bottom: 8px;">
+                        Document ID: {doc_id}
+                    </div>
+                    <div style="color: #545454; font-size: 14px; line-height: 1.6; margin-bottom: 8px;">
+                        {highlighted_snippet if highlighted_snippet else snippet}
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="score-badge">점수: {score:.4f}</span>
+                        <span style="color: #70757a; font-size: 12px;">랭크 #{r['rank']}</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # 전체 문서 보기 (확장 가능)
+                with st.expander("📄 전체 문서 보기", expanded=False):
+                    st.text_area("", full_text[:5000], height=200, key=f"full_{doc_id}", disabled=True)
+            
+            # 페이지네이션
+            if total_pages > 1:
+                st.markdown("<br>", unsafe_allow_html=True)
+                pagination_cols = st.columns([1, 2, 1])
+                
+                with pagination_cols[0]:
+                    if st.button("◀ 이전", disabled=(st.session_state.current_page == 1)):
+                        st.session_state.current_page -= 1
+                        st.rerun()
+                
+                with pagination_cols[1]:
+                    st.markdown(
+                        f'<div style="text-align: center; padding: 10px;">'
+                        f'페이지 {st.session_state.current_page} / {total_pages}'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+                
+                with pagination_cols[2]:
+                    if st.button("다음 ▶", disabled=(st.session_state.current_page >= total_pages)):
+                        st.session_state.current_page += 1
+                        st.rerun()
+            
+            # 결과 수 조정
+            st.markdown("---")
+            new_per_page = st.selectbox(
+                "페이지당 결과 수",
+                [5, 10, 20, 30, 50],
+                index=[5, 10, 20, 30, 50].index(st.session_state.results_per_page),
+                key="per_page_selector"
+            )
+            if new_per_page != st.session_state.results_per_page:
+                st.session_state.results_per_page = new_per_page
+                st.session_state.current_page = 1
+                st.rerun()
+    
 
 
 if __name__ == "__main__":

@@ -180,44 +180,44 @@ IDF(t) = log(N / DF(t))
 3. Hybrid (BM25 + TF-IDF)
 4. BM25 + Cross-Encoder Reranker
 
-### 6.3 실험 결과
+### 6.3 ?? ??
 
-#### Validation Set 결과
+#### Validation Set ??
 
-```
-Metric       BM25     TF-IDF    Hybrid    Reranker
-----------------------------------------------------
-MAP         0.xxxx    0.xxxx    0.xxxx    0.xxxx
-P@5         0.xxxx    0.xxxx    0.xxxx    0.xxxx
-P@10        0.xxxx    0.xxxx    0.xxxx    0.xxxx
-P@20        0.xxxx    0.xxxx    0.xxxx    0.xxxx
-R@5         0.xxxx    0.xxxx    0.xxxx    0.xxxx
-R@10        0.xxxx    0.xxxx    0.xxxx    0.xxxx
-R@20        0.xxxx    0.xxxx    0.xxxx    0.xxxx
-nDCG@5      0.xxxx    0.xxxx    0.xxxx    0.xxxx
-nDCG@10     0.xxxx    0.xxxx    0.xxxx    0.xxxx
-nDCG@20     0.xxxx    0.xxxx    0.xxxx    0.xxxx
-```
+| Method | MAP | P@5 | P@10 | P@20 | R@5 | R@10 | R@20 | nDCG@5 | nDCG@10 | nDCG@20 |
+|--------|------|------|------|------|------|------|------|--------|---------|---------|
+| BM25 | 0.1480 | 0.2455 | 0.2059 | 0.1505 | 0.1086 | 0.1823 | 0.2430 | 0.3162 | 0.3048 | 0.3089 |
+| TF-IDF | 0.1045 | 0.1842 | 0.1525 | 0.1134 | 0.0810 | 0.1279 | 0.1770 | 0.2357 | 0.2272 | 0.2345 |
+| Hybrid | 0.1370 | 0.2257 | 0.1931 | 0.1371 | 0.1012 | 0.1711 | 0.2169 | 0.2979 | 0.2917 | 0.2924 |
+| BM25+Reranker | 0.1891 | 0.3465 | 0.2574 | 0.1772 | 0.1525 | 0.2169 | 0.2841 | 0.4819 | 0.4267 | 0.4092 |
 
-(실제 실행 결과로 대체)
+#### Test Set ??
 
-### 6.4 결과 분석
+| Method | MAP | P@5 | P@10 | P@20 | R@5 | R@10 | R@20 | nDCG@5 | nDCG@10 | nDCG@20 |
+|--------|------|------|------|------|------|------|------|--------|---------|---------|
+| BM25 | 0.1736 | 0.3050 | 0.2099 | 0.1495 | 0.1471 | 0.1998 | 0.2712 | 0.4010 | 0.3548 | 0.3614 |
+| TF-IDF | 0.1256 | 0.2436 | 0.1723 | 0.1213 | 0.1157 | 0.1564 | 0.2121 | 0.3125 | 0.2809 | 0.2850 |
+| Hybrid | 0.1615 | 0.2950 | 0.2050 | 0.1381 | 0.1411 | 0.1925 | 0.2457 | 0.3932 | 0.3464 | 0.3449 |
+| BM25+Reranker | 0.2029 | 0.3347 | 0.2267 | 0.1639 | 0.1574 | 0.2101 | 0.2928 | 0.5208 | 0.4450 | 0.4434 |
 
-**주요 발견사항:**
+### 6.4 ?? ??
 
-1. **BM25 vs TF-IDF**: 
-   - (실험 결과에 따른 분석)
+**?? ????:**
 
-2. **Hybrid 랭킹**:
-   - (하이브리드 랭킹의 효과 분석)
+1. **BM25 vs TF-IDF**:
+   - BM25 outperforms TF-IDF by about 38% in MAP (0.1736 vs 0.1256), showing the impact of length normalization and TF saturation.
 
-3. **Reranker 효과**:
-   - (Cross-Encoder 리랭킹의 성능 향상 분석)
+2. **Reranker Impact**:
+   - Cross-Encoder reranking improves BM25 notably.
+   - MAP: +16.9% (0.1736 -> 0.2029)
+   - nDCG@10: +25.4% (0.3548 -> 0.4450)
+   - This suggests semantic reranking adds value beyond lexical matching.
 
-4. **파라미터 영향**:
-   - BM25 파라미터 (k1, b) 조정 실험
-   - Hybrid 가중치 조정 실험
+3. **Hybrid Approach**:
+   - The simple BM25 + TF-IDF hybrid (0.1615 MAP) underperforms BM25 (0.1736 MAP), indicating naive score mixing is not optimal without tuning.
 
+4. **Consistency**:
+   - Validation and test trends are aligned, suggesting no obvious overfitting to a specific split.
 ## 7. 구현 세부사항
 
 ### 7.1 직접 구현한 알고리즘
@@ -358,4 +358,7 @@ streamlit run app.py
 **프로젝트 기간:** 2025년 11월 - 12월  
 **데이터셋:** wikir/en1k (ir_datasets)  
 **프로그래밍 언어:** Python 3.x
+
+
+
 

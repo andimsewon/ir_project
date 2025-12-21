@@ -45,7 +45,7 @@ def run_eval(split="validation"):
     print("Loading rankers...")
     bm25_ranker = BM25Ranker(index)
     tfidf_ranker = TFIDFRanker(index)
-    reranker = CrossEncoderReranker()
+    reranker = None
     query_expander = QueryExpander(index)
     engine = SearchEngine(index, bm25_ranker, reranker, tfidf_ranker, query_expander)
     
@@ -108,6 +108,8 @@ def run_eval(split="validation"):
     print("Evaluating BM25 + Reranker...")
     print("-" * 60)
     
+    reranker = CrossEncoderReranker()
+    engine.reranker = reranker
     run_rerank = evaluator.generate_run(engine, method="bm25", use_reranker=True, top_k=100)
     evaluator.save_run_trec(
         run_rerank,

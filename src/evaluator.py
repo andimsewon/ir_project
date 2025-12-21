@@ -30,6 +30,8 @@ class Evaluator:
                 parts = line.strip().split('\t')
                 if len(parts) >= 3:
                     qid, doc_id, rel = parts[0], parts[1], int(parts[2])
+                    if qid in ("query_id", "id_left") or doc_id in ("doc_id", "id_right"):
+                        continue
                     if rel > 0:
                         qrels[qid][doc_id] = rel
         return qrels
@@ -42,6 +44,8 @@ class Evaluator:
             for line in f:
                 parts = line.strip().split('\t', 1)
                 if len(parts) == 2:
+                    if parts[0] in ("query_id", "id_left") or parts[1] in ("text", "text_left"):
+                        continue
                     queries[parts[0]] = parts[1]
         return queries
     
@@ -149,11 +153,11 @@ class Evaluator:
         dcg = 0.0
         for i, doc in enumerate(retrieved[:k]):
             rel = relevant.get(doc, 0)
-            dcg += rel / math.log2(i + 2)
+            dcg += (2**rel - 1) / math.log2(i + 2)
         
         # IDCG
         ideal = sorted(relevant.values(), reverse=True)[:k]
-        idcg = sum(rel / math.log2(i + 2) for i, rel in enumerate(ideal))
+        idcg = sum((2**rel - 1) / math.log2(i + 2) for i, rel in enumerate(ideal))
         
         return dcg / idcg if idcg > 0 else 0.0
     

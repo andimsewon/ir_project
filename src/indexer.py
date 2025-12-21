@@ -56,6 +56,8 @@ class InvertedIndex:
             for line in f:
                 parts = line.strip().split('\t', 1)
                 if len(parts) == 2:
+                    if parts[0] in ("doc_id", "id_right") or parts[1] in ("text", "text_right"):
+                        continue
                     docs.append((parts[0], parts[1]))
         
         print(f"[Indexer] Building index for {len(docs)} documents...")

@@ -1,4 +1,4 @@
-﻿# Python
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -8,13 +8,21 @@ venv/
 env/
 ENV/
 
-# Data files (제출 시 제외)
+# Data files (?? ? ??)
 data/documents.tsv
 data/index.pkl
 data/*.tsv
 data/*.trec
 
-# Results (제출 시 포함)
+# Large datasets / caches
+.ir_datasets_tmp/
+wikIR1k/
+wikIR1k/documents.csv
+wikIR1k_extracted/wikIR1k/documents.csv
+wikIR1k_extracted/
+_tmp/
+
+# Results (?? ? ??)
 # results/
 
 # IDE
@@ -33,5 +41,5 @@ Thumbs.db
 # Logs
 *.log
 
-# Config (민감 정보)
+# Config (?? ??)
 config/secret_key
