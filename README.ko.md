@@ -67,7 +67,7 @@
 - Inverted Index 구축 (posting list, DF, doc length, doc store)
 - BM25 랭킹 (k1=1.5, b=0.75)
 - TF-IDF 랭킹
-- Streamlit 웹 UI (SPLADE 고정 + 리랭커/쿼리 확장 토글)
+- Streamlit 웹 UI (검색 방법 선택, 리랭커/쿼리 확장 토글, 점수 타입 표시)
 
 ### 추가 기능
 - 쿼리 확장 (동의어/공출현/임베딩 기반)
@@ -164,12 +164,15 @@ streamlit run app.py
 
 브라우저에서 `http://localhost:8501` 접속
 
-### 5-1) 웹 UI 사용 방법 (SPLADE 고정)
+### 5-1) 웹 UI 사용 방법 (검색 방법 선택, 기본 Dense)
 
-1) 검색어 입력 후 Enter 또는 `검색` 버튼 클릭  
-2) 결과 카드에서 제목/스니펫/점수 확인  
-3) 페이지네이션으로 결과 이동  
-4) Reranker / Query Expansion 토글로 옵션 변경  
+1) 검색 방법 선택 (기본값 Dense)  
+2) 검색어 입력 후 Enter 또는 `검색` 버튼 클릭  
+3) 결과 카드에서 제목/스니펫/점수 타입 확인  
+4) 페이지네이션으로 결과 이동  
+5) Reranker / Query Expansion 토글로 옵션 변경  
+6) Hybrid 계열은 사이드바에서 BM25 가중치 조절  
+7) `Clear results`로 결과 초기화  
 
 ### 6) CLI 실행 (선택)
 

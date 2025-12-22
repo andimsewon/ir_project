@@ -1,4 +1,4 @@
-"""
+﻿"""
 Search engine module.
 Supports BM25, TF-IDF, hybrid, and optional reranking/query expansion.
 """
@@ -61,9 +61,6 @@ class SearchEngine:
                 'expanded_query': str (optional)
             }
         """
-        if self.splade_retriever:
-            # force SPLADE when available
-            method = "splade"
         expanded_query = query
         if use_query_expansion and self.query_expander:
             expanded_query = self.query_expander.expand(query, method="hybrid")
@@ -215,3 +212,4 @@ class SearchEngine:
     def get_document(self, doc_id):
         """Return full document text."""
         return self.index.get_document(doc_id)
+

@@ -86,7 +86,7 @@ User query input
 - Inverted index build (posting list, DF, doc length, doc store)
 - BM25 ranking (k1=1.5, b=0.75)
 - TF-IDF ranking
-- Streamlit web UI (SPLADE fixed + reranker/query expansion toggles)
+- Streamlit web UI (method selection, reranker/query expansion toggles, score type display)
 
 ### Additional Features
 - Query expansion (synonym/co-occurrence/embedding-based)
@@ -183,12 +183,15 @@ streamlit run app.py
 
 Open `http://localhost:8501` in your browser.
 
-### 5-1) Web UI usage (SPLADE fixed)
+### 5-1) Web UI usage (method-selectable, default Dense)
 
-1) Enter a query and press Enter or click `Search`
-2) Check title/snippet/score in result cards
-3) Move pages with pagination
-4) Toggle Reranker / Query Expansion options
+1) Select a retrieval method (Dense is default)
+2) Enter a query and press Enter or click `Search`
+3) Check title/snippet and the score type label in result cards
+4) Move pages with pagination
+5) Toggle Reranker / Query Expansion options
+6) For hybrid methods, adjust the BM25 weight in the sidebar
+7) Use `Clear results` to reset the view
 
 ### 6) Run the CLI (optional)
 

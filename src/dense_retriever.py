@@ -147,8 +147,8 @@ class DenseRetriever:
 
         return results
 
-        # build FAISS ANN index if enabled
-def _build_ann_index(self):
+    def _build_ann_index(self):
+        """Build FAISS ANN index if enabled."""
         if not self.ann_enabled or self.embeddings is None:
             self.ann_index = None
             return
