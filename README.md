@@ -1,37 +1,84 @@
 ﻿# SAP (Search Anything Positively)
 
-직접 구현한 IR(Information Retrieval) 검색엔진 프로젝트입니다. 역색인 기반의 BM25/TF-IDF/하이브리드 랭킹부터 쿼리 확장, 리랭커, Dense/SPLADE까지 실험할 수 있고 Streamlit UI로 데모가 가능합니다.
+직접 구현한 IR(Information Retrieval) 검색 엔진 프로젝트입니다. 역색인 기반 BM25/TF-IDF/하이브리드 랭킹부터 쿼리 확장, 리랭커, Dense/SPLADE까지 실험할 수 있고, Streamlit UI로 데모가 가능합니다.
 
 ---
 
-## 핵심 기능
+## 목차
 
-- **Inverted Index 기반 검색**: 문서 토큰화, DF/TF, 평균 길이 등 직접 구축
-- **랭킹 방법**: BM25, TF-IDF, Hybrid(BM25 + TF-IDF)
-- **고급 기능**
-  - 쿼리 확장: 동의어/공출현/임베딩 기반
-  - Cross-Encoder 리랭커 (Top-K 재정렬)
-- **Dense & SPLADE (옵션)**
-  - Dense bi-encoder 인덱싱/검색
-  - SPLADE sparse 인덱싱/검색
-- **UI/CLI**
-  - Streamlit 웹 UI
-  - 터미널 검색 CLI
-- **평가**
-  - pytrec_eval 기반 MAP/P@k/nDCG 측정
+- 프로젝트 개요
+- 시스템 아키텍처
+- 주요 기능
+- 실행 방법 (Windows / macOS)
+- 평가 (TREC)
+- 프로젝트 구조
+- 제약사항 준수
+- 트러블슈팅
 
 ---
 
-## 데이터셋
+## 프로젝트 개요
 
-- **wikir/en1k (ir_datasets)**
-  - 문서: 369,712
-  - 쿼리: training 1,444 / validation 100 / test 100
-  - relevance: 0/1/2
+### 목표
+- 검색 엔진의 핵심 구조 이해
+- 인덱싱, 검색, 랭킹, UI, 평가까지 전체 파이프라인 구현
+- 다양한 랭킹 알고리즘 성능 비교 및 분석
+
+### 특징
+- 완전 자체 구현: 인덱싱/랭킹 로직 직접 구현
+- 다양한 랭킹 방법: BM25, TF-IDF, 하이브리드
+- 고급 기능: 쿼리 확장, Cross-Encoder 리랭커
+- 평가: pytrec_eval 기반 MAP/P@k/nDCG
+- UI: Streamlit 웹 UI + 터미널 CLI
+
+### 데이터셋
+- wikir/en1k (ir_datasets)
+- 문서: 369,712
+- 쿼리: training 1,444 / validation 100 / test 100
+- relevance: 0 (not relevant), 1 (relevant), 2 (highly relevant)
 
 ---
 
-## 빠른 시작 (Windows / macOS 공통)
+## 시스템 아키텍처
+
+### 전체 파이프라인
+
+사용자 쿼리 입력
+→ Query Processor (토크나이징, 쿼리 확장 선택)
+→ Retrieval/Ranking (BM25/TF-IDF/Hybrid/Dense/SPLADE)
+→ Reranker (선택, Cross-Encoder)
+→ 결과 출력 (스니펫/하이라이트, 페이지네이션)
+
+### 핵심 구성 요소
+- Inverted Index: `src/indexer.py`
+- Rankers: `src/ranker.py` (BM25), `src/tfidf_ranker.py`
+- Search Engine: `src/searcher.py`
+- Query Expander: `src/query_expander.py`
+- Reranker: `src/reranker.py`
+- Dense/SPLADE: `src/dense_retriever.py`, `src/splade_retriever.py`
+- UI: `app.py` (Streamlit), `cli_search.py` (CLI)
+
+---
+
+## 주요 기능
+
+### 필수 기능
+- Inverted Index 구축 (posting list, DF, doc length, doc store)
+- BM25 랭킹 (k1=1.5, b=0.75)
+- TF-IDF 랭킹
+- 하이브리드 랭킹 (BM25 + TF-IDF 가중 결합)
+- Streamlit 웹 UI
+
+### 추가 기능
+- 쿼리 확장 (동의어/공출현/임베딩 기반)
+- Cross-Encoder 리랭킹 (`cross-encoder/ms-marco-MiniLM-L-6-v2`)
+- 하이라이팅, 페이지네이션, 필터/옵션 표시
+- Dense retrieval (옵션, `BAAI/bge-base-en-v1.5`)
+- SPLADE (옵션, `naver/splade-cocondenser-ensembledistil`)
+
+---
+
+## 실행 방법 (Windows / macOS)
 
 ### 1) 가상환경
 
@@ -57,22 +104,19 @@ pip install -r requirements.txt
 python download_data.py
 ```
 
-- 결과물: `data/` 하위에 `documents.tsv`, `queries_*.tsv`, `qrels_*.tsv`
-- 다운로드가 막힐 경우 대안:
+대안 (직접 다운로드):
 
 ```bash
 python download_data_direct.py
 ```
 
-### 4) 인덱스 빌드 (BM25)
+### 4) BM25 인덱스 빌드
 
 ```bash
 python build_index.py
 ```
 
-- 결과물: `data/index.pkl`
-
-### 5) Streamlit 실행
+### 5) Streamlit UI 실행
 
 ```bash
 streamlit run app.py
@@ -80,30 +124,34 @@ streamlit run app.py
 
 브라우저에서 `http://localhost:8501` 접속
 
+### 6) CLI 실행 (선택)
+
+```bash
+python cli_search.py --method bm25 --top-k 10
+```
+
 ---
 
-## 내일 Mac 데모용 체크리스트 (권장)
+## Mac 데모 빠른 준비 (권장)
 
-### A안: Windows에서 만든 데이터/인덱스를 Mac으로 복사 (가장 빠름)
+### A안: Windows에서 만든 데이터/인덱스 복사
 
-1) **Windows에서 아래 파일들을 통째로 복사**
+1) Windows에서 아래 파일 복사
    - `data/documents.tsv`
    - `data/queries_*.tsv`
    - `data/qrels_*.tsv`
    - `data/index.pkl`
    - (옵션) `data/dense_index.pt`, `data/splade_index.pt`
-2) **Mac에서 프로젝트 폴더에 그대로 붙여넣기**
-3) **Mac에서 가상환경 + 패키지 설치**
-4) **데모 전 리허설 실행**
+2) Mac에 같은 경로로 복사
+3) Mac에서 venv + `pip install -r requirements.txt`
+4) 리허설:
 
 ```bash
 python check_data.py
 streamlit run app.py
 ```
 
-> 처음 실행 시 리랭커/임베딩 모델을 다운로드할 수 있습니다. 데모 전에 한번 실행해 캐시를 받아두면 안정적입니다.
-
-### B안: Mac에서 바로 다운로드 + 인덱스 빌드
+### B안: Mac에서 직접 다운로드 + 빌드
 
 ```bash
 python download_data.py
@@ -111,69 +159,44 @@ python build_index.py
 streamlit run app.py
 ```
 
-> 네트워크와 시간 여유가 있을 때만 권장.
-
----
-
-## Streamlit UI 사용법
-
-- 상단 버튼으로 **BM25 / TF-IDF / 하이브리드 / 리랭커 / 쿼리 확장**을 선택
-- 선택 상태가 `[ON]`으로 표시됨
-- 검색 결과에 `방법`, `리랭커`, `쿼리 확장` 요약 캡션 표시
-- 검색 중/완료 상태 표시
-
----
-
-## 고급 검색 모드 (코드 레벨)
-
-`src/searcher.py`의 `SearchEngine.search()`는 다음 `method`를 지원합니다:
-
-- `bm25`
-- `tfidf`
-- `hybrid`
-- `dense`
-- `hybrid_dense`
-- `splade`
-- `hybrid_splade`
-
----
-
-## Dense 인덱스 (옵션)
-
-```bash
-python build_dense_index.py --model BAAI/bge-base-en-v1.5 --batch-size 64 --max-length 512
-```
-
-- 결과물: `data/dense_index.pt`
-
----
-
-## SPLADE 인덱스 (옵션)
-
-```bash
-python build_splade_index.py --model naver/splade-cocondenser-ensembledistil --batch-size 8 --max-length 256 --top-terms 128
-```
-
-- 결과물: `data/splade_index.pt`
-
 ---
 
 ## 평가 (TREC)
+
+### 실행
 
 ```bash
 python run_eval.py --split validation
 python run_eval.py --split test
 ```
 
-- 결과: `results/` 폴더에 run 파일 및 요약 파일 생성
+### 결과 위치
+- `results/summary_validation.txt`
+- `results/summary_test.txt`
+- `results/bm25_*.txt`, `results/tfidf_*.txt`, `results/hybrid_*.txt`, `results/rerank_*.txt`
 
----
+### 측정 지표
+- MAP, Precision@k, Recall@k, nDCG
 
-## CLI 검색 (터미널)
+### 결과 요약 (현재 results 기준)
 
-```bash
-python cli_search.py --method bm25 --top-k 10
-```
+Validation (BM25 vs BM25+Reranker)
+
+| Metric | BM25 | BM25 + Reranker |
+| --- | --- | --- |
+| MAP | 0.1495 | 0.1372 |
+| P@10 | 0.2080 | 0.1940 |
+| nDCG@10 | 0.3078 | 0.3178 |
+
+Test (BM25 vs BM25+Reranker)
+
+| Metric | BM25 | BM25 + Reranker |
+| --- | --- | --- |
+| MAP | 0.1754 | 0.1535 |
+| P@10 | 0.2120 | 0.1990 |
+| nDCG@10 | 0.3584 | 0.3405 |
+
+참고: 이번 결과에서는 Reranker가 Validation에서 nDCG@10은 상승했지만 MAP/P@10은 하락했고, Test에서는 전체적으로 하락했습니다.
 
 ---
 
@@ -194,6 +217,7 @@ ir_project/
 ├─ requirements.txt
 ├─ src/
 │  ├─ indexer.py
+│  ├─ tokenizer.py
 │  ├─ ranker.py
 │  ├─ tfidf_ranker.py
 │  ├─ searcher.py
@@ -208,19 +232,21 @@ ir_project/
 
 ---
 
-## 트러블슈팅
+## 제약사항 준수
 
-- **Index not found**
-  - `python download_data.py` → `python build_index.py`
-- **모델 다운로드 지연**
-  - 데모 전 한번 실행해 캐시 확보 (리랭커/임베딩 모델)
-- **macOS에서 느림**
-  - 기본은 CPU로 동작. 데모용으로는 충분
-- **네트워크 불안**
-  - A안(데이터/인덱스 복사)로 준비 권장
+- 외부 검색 엔진 라이브러리 미사용 (Elasticsearch/Lucene/Solr/Indri)
+- HuggingFace 사전 학습 모델만 사용
+- 인덱싱/랭킹 로직은 직접 구현
 
 ---
 
-## 라이선스
+## 트러블슈팅
 
-교육용 프로젝트 목적.
+- Index not found
+  - `python download_data.py` → `python build_index.py`
+- 모델 다운로드 지연
+  - 데모 전 한 번 실행하여 캐시 확보
+- macOS에서 느림
+  - CPU로 동작하므로 데모용으로 충분
+- 네트워크 불안
+  - A안(데이터/인덱스 복사) 권장
