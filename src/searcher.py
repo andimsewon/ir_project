@@ -61,6 +61,9 @@ class SearchEngine:
                 'expanded_query': str (optional)
             }
         """
+        if self.splade_retriever:
+            # Force SPLADE when available for consistent behavior.
+            method = "splade"
         expanded_query = query
         if use_query_expansion and self.query_expander:
             expanded_query = self.query_expander.expand(query, method="hybrid")

@@ -98,6 +98,12 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+ANN(FAISS) 사용 시:
+
+```bash
+pip install faiss-cpu
+```
+
 ### 3) 데이터 다운로드
 
 ```bash
@@ -116,6 +122,40 @@ python download_data_direct.py
 python build_index.py
 ```
 
+### 4-1) SPLADE 인덱스 빌드 (필수, GPU 권장)
+
+Intel Arc A770 (DirectML) 사용:
+
+```bash
+pip install torch-directml
+python build_splade_index.py --device dml
+```
+
+CPU 사용:
+
+```bash
+python build_splade_index.py --device cpu
+```
+
+SPLADE 인덱스를 생성해야 검색이 동작합니다.
+Streamlit/CLI는 `torch-directml`이 설치되어 있으면 자동으로 DirectML을 사용합니다.
+
+### 4-2) Dense + ANN 인덱스 빌드 (선택)
+
+FAISS가 설치되어 있으면 ANN 인덱스를 자동 생성하며, 검색 시 ANN을 사용합니다.
+ANN 검색은 CPU에서 동작하고, 임베딩 인코딩은 `--device dml`로 Intel Arc GPU를 사용합니다.
+현재 Streamlit/CLI는 SPLADE 전용으로 동작합니다. Dense ANN은 별도 실험용 인덱스입니다.
+
+```bash
+python build_dense_index.py --device dml
+```
+
+GPU 메모리 부족 오류가 나면 배치/길이를 줄이세요:
+
+```bash
+python build_dense_index.py --device dml --batch-size 8 --max-length 256
+```
+
 ### 5) Streamlit UI 실행
 
 ```bash
@@ -127,7 +167,7 @@ streamlit run app.py
 ### 6) CLI 실행 (선택)
 
 ```bash
-python cli_search.py --method bm25 --top-k 10
+python cli_search.py --top-k 10
 ```
 
 ---
@@ -243,10 +283,12 @@ ir_project/
 ## 트러블슈팅
 
 - Index not found
-  - `python download_data.py` → `python build_index.py`
+  - `python download_data.py` → `python build_index.py` → `python build_splade_index.py`
 - 모델 다운로드 지연
   - 데모 전 한 번 실행하여 캐시 확보
 - macOS에서 느림
   - CPU로 동작하므로 데모용으로 충분
 - 네트워크 불안
   - A안(데이터/인덱스 복사) 권장
+- faiss-cpu 설치 실패 (Windows)
+  - 파이썬/환경에 따라 설치가 실패할 수 있습니다. 이 경우 Dense ANN은 생략하고 `--no-ann`으로 빌드하세요.

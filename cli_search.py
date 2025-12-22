@@ -2,12 +2,14 @@
 Simple terminal UI for the search engine.
 """
 import argparse
+import importlib.util
 import os
 
 from src.indexer import InvertedIndex
 from src.ranker import BM25Ranker
 from src.tfidf_ranker import TFIDFRanker
 from src.searcher import SearchEngine
+from src.splade_retriever import SpladeRetriever
 
 
 def load_engine(index_path):
@@ -21,7 +23,21 @@ def load_engine(index_path):
     bm25_ranker = BM25Ranker(index)
     tfidf_ranker = TFIDFRanker(index)
 
-    return SearchEngine(index, bm25_ranker, tfidf_ranker=tfidf_ranker)
+    splade_path = os.path.join("data", "splade_index.pt")
+    if not os.path.exists(splade_path):
+        print(f"Error: {splade_path} not found. Run 'python build_splade_index.py' first.")
+        return None
+
+    device = "dml" if importlib.util.find_spec("torch_directml") is not None else None
+    splade_retriever = SpladeRetriever(device=device)
+    splade_retriever.load(splade_path)
+
+    return SearchEngine(
+        index,
+        bm25_ranker,
+        tfidf_ranker=tfidf_ranker,
+        splade_retriever=splade_retriever,
+    )
 
 
 def main():
@@ -29,9 +45,9 @@ def main():
     parser.add_argument("--top-k", type=int, default=10, help="Number of results to show")
     parser.add_argument(
         "--method",
-        default="bm25",
-        choices=["bm25", "tfidf", "hybrid"],
-        help="Ranking method",
+        default="splade",
+        choices=["splade"],
+        help="Ranking method (SPLADE only)",
     )
     args = parser.parse_args()
 

@@ -6,6 +6,7 @@ import streamlit as st
 import time
 import re
 import os
+import importlib.util
 from datetime import datetime
 
 # 페이지 설정
@@ -188,6 +189,7 @@ def load_engine():
     from src.reranker import CrossEncoderReranker
     from src.query_expander import QueryExpander
     from src.searcher import SearchEngine
+    from src.splade_retriever import SpladeRetriever
     
     index_path = "data/index.pkl"
     if not os.path.exists(index_path):
@@ -205,7 +207,14 @@ def load_engine():
     # 임베딩 기반 쿼리 확장 (선택적)
     query_expander = QueryExpander(index, use_embedding=False)  # False로 설정하면 빠름
     
-    return SearchEngine(index, bm25_ranker, reranker, tfidf_ranker, query_expander)
+    splade_path = "data/splade_index.pt"
+    if not os.path.exists(splade_path):
+        return None
+    device = "dml" if importlib.util.find_spec("torch_directml") is not None else None
+    splade_retriever = SpladeRetriever(device=device)
+    splade_retriever.load(splade_path)
+
+    return SearchEngine(index, bm25_ranker, reranker, tfidf_ranker, query_expander, splade_retriever=splade_retriever)
 
 
 def highlight_text(text, query, max_length=300):
@@ -326,11 +335,18 @@ def main():
         st.session_state.search_results = None
         st.session_state.current_page = 1
 
+    index_path = "data/index.pkl"
+    splade_path = "data/splade_index.pt"
+    if not os.path.exists(index_path) or not os.path.exists(splade_path):
+        st.error("Required index files are missing.")
+        st.code("python download_data.py\npython build_index.py\npython build_splade_index.py", language="bash")
+        return
+
     engine = load_engine()
     
     if engine is None:
         st.error("⚠️ 인덱스를 찾을 수 없습니다. 먼저 다음 명령을 실행하세요:")
-        st.code("python download_data.py\npython build_index.py", language="bash")
+        st.code("python download_data.py\npython build_index.py\npython build_splade_index.py", language="bash")
         return
     
     # 메인 컨테이너
