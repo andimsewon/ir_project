@@ -9,7 +9,6 @@ import os
 import importlib.util
 from datetime import datetime
 
-# 페이지 설정
 st.set_page_config(
     page_title="Search Engine",
     page_icon="🔍",
@@ -17,7 +16,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# CSS 스타일
 st.markdown("""
 <style>
     :root {
@@ -182,6 +180,7 @@ st.markdown("""
 
 @st.cache_resource
 def load_engine():
+    # load cached engine
     """검색 엔진 로드 (캐시)"""
     from src.indexer import InvertedIndex
     from src.ranker import BM25Ranker
@@ -201,14 +200,12 @@ def load_engine():
     bm25_ranker = BM25Ranker(index)
     tfidf_ranker = TFIDFRanker(index)
     
-    # 최적화된 리랭커 (균형잡힌 성능)
     reranker = None
     try:
         reranker = CrossEncoderReranker(model_size="balanced")
     except Exception as exc:
         print(f"[Warning] Reranker disabled: {exc}")
     
-    # 임베딩 기반 쿼리 확장 (선택적)
     query_expander = QueryExpander(index, use_embedding=False)  # False로 설정하면 빠름
     
     splade_path = "data/splade_index.pt"
@@ -226,19 +223,15 @@ def highlight_text(text, query, max_length=300):
     if not text:
         return ""
     
-    # 쿼리 단어 추출 (소문자로 정규화)
     query_terms = set(re.findall(r'\b\w+\b', query.lower()))
     
     if not query_terms:
-        # 쿼리 단어가 없으면 원본 텍스트 반환 (길이 제한)
         if len(text) > max_length:
             return text[:max_length] + "..."
         return text
     
-    # 텍스트를 문장 단위로 분리
     sentences = re.split(r'[.!?]\s+', text)
     
-    # 쿼리 단어가 가장 많이 포함된 문장 찾기
     best_sentence = ""
     best_score = 0
     
@@ -249,11 +242,9 @@ def highlight_text(text, query, max_length=300):
             best_score = score
             best_sentence = sentence
     
-    # 최선의 문장이 없으면 원본 텍스트 사용
     if not best_sentence:
         best_sentence = text[:200]
     
-    # 하이라이트 적용 (원본 대소문자 유지)
     words_pattern = re.compile(r'\b\w+\b', re.IGNORECASE)
     
     def highlight_word(match):
@@ -264,10 +255,8 @@ def highlight_text(text, query, max_length=300):
     
     highlighted = words_pattern.sub(highlight_word, best_sentence)
     
-    # 길이 제한 (HTML 태그 제외하고 계산)
     plain_text = re.sub(r'<[^>]+>', '', highlighted)
     if len(plain_text) > max_length:
-        # 하이라이트 태그를 고려하여 자르기
         truncated = ""
         tag_open = False
         for char in highlighted:
@@ -289,16 +278,13 @@ def extract_title(doc_text, query):
     if not doc_text:
         return "Untitled Document"
     
-    # 첫 문장을 제목으로 사용
     first_sentence = doc_text.split('.')[0].strip()
     
-    # 쿼리 단어가 포함된 경우 해당 부분 우선
     query_terms = set(re.findall(r'\b\w+\b', query.lower()))
     words = doc_text.split()
     
     for i, word in enumerate(words[:50]):  # 처음 50단어만 확인
         if word.lower().strip('.,!?;:"\'') in query_terms:
-            # 해당 단어 주변을 제목으로
             start = max(0, i - 5)
             end = min(len(words), i + 15)
             title = ' '.join(words[start:end])
@@ -306,14 +292,12 @@ def extract_title(doc_text, query):
                 title = title[:100] + "..."
             return title
     
-    # 기본: 첫 문장
     if len(first_sentence) > 100:
         first_sentence = first_sentence[:100] + "..."
     return first_sentence or "Document"
 
 
 def main():
-    # 세션 상태 초기화
     if 'search_results' not in st.session_state:
         st.session_state.search_results = None
     if 'current_page' not in st.session_state:
@@ -358,9 +342,7 @@ def main():
         st.code("python download_data.py\npython build_index.py\npython build_splade_index.py", language="bash")
         return
     
-    # 메인 컨테이너
     with st.container():
-        # 로고 및 검색창 영역
         col1, col2, col3 = st.columns([1, 3, 1])
         with col2:
             st.markdown("<br><br>", unsafe_allow_html=True)
@@ -372,7 +354,6 @@ def main():
                 unsafe_allow_html=True
             )
             
-            # 검색 입력
             query_input = st.text_input(
                 "",
                 value=st.session_state.get('search_input', ''),
@@ -381,15 +362,12 @@ def main():
                 label_visibility="collapsed"
             )
             
-            # 검색 버튼 (Enter 키로도 작동)
             col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
             with col_btn2:
                 search_clicked = st.button("검색", use_container_width=True, type="primary")
             
-            # 검색어 업데이트
             query = query_input.strip() if query_input else ""
             
-            # ?? ?? (?? ??)
             st.markdown("<br>", unsafe_allow_html=True)
             toggle_cols = st.columns(2)
             with toggle_cols[0]:
@@ -432,13 +410,11 @@ def main():
         
         
     
-    # 검색 실행
     if (search_clicked or query) and query.strip():
         status = st.status("검색 중...", expanded=False) if hasattr(st, "status") else None
         with st.spinner("검색 중..."):
             start_time = time.time()
             
-            # 필터에 따른 검색 설정
             use_reranker = st.session_state.use_reranker_opt
             use_expansion = st.session_state.use_expansion_opt
             method = "splade"
@@ -463,11 +439,9 @@ def main():
             if status:
                 status.update(label=f"검색 완료 ({elapsed:.2f}s)", state="complete")
     
-    # 검색 결과 표시
     if st.session_state.search_results:
         result = st.session_state.search_results
         
-        # 검색 통계
         st.markdown(f"""
         <div class="stats-bar">
             <span class="stat-chip">Results: {len(result['results']):,}</span>
@@ -476,7 +450,6 @@ def main():
         </div>
         """, unsafe_allow_html=True)
         
-        # 확장된 쿼리 표시
         if result.get('expanded_query') and result['expanded_query'] != result['query']:
             st.info(f"💡 확장된 쿼리: **{result['expanded_query']}**")
         
@@ -487,11 +460,9 @@ def main():
             cols = st.columns(len(examples))
             for i, ex in enumerate(examples):
                 if cols[i].button(ex, key=f"ex_no_results_{i}"):
-                    # 瓴€?夓柎毳??胳厴 ?來儨리랭커€?ロ晿瓿?瓴€리랭커ろ枆
                     st.session_state.pending_query = ex
                     st.rerun()
         else:
-            # 페이지네이션 계산
             total_results = len(result['results'])
             total_pages = (total_results - 1) // st.session_state.results_per_page + 1
             start_idx = (st.session_state.current_page - 1) * st.session_state.results_per_page
@@ -499,7 +470,6 @@ def main():
             page_results = result['results'][start_idx:end_idx]
             max_score = max((r['score'] for r in result['results']), default=1.0) or 1.0
             
-            # 결과 표시
             for r in page_results:
                 doc_id = r['doc_id']
                 score = r['score']
@@ -507,14 +477,11 @@ def main():
                 full_text = engine.get_document(doc_id)
                 score_pct = min(100.0, (score / max_score) * 100.0) if max_score > 0 else 0.0
                 
-                # 제목 추출
                 title = extract_title(full_text, result['query'])
                 highlighted_title = highlight_text(title, result['query'], max_length=150)
                 
-                # 스니펫 하이라이트
                 highlighted_snippet = highlight_text(snippet, result['query'])
                 
-                # 결과 카드
                 st.markdown(f"""
                 <div class="result-card">
                     <h3 class="result-title">{highlighted_title}</h3>
@@ -532,11 +499,9 @@ def main():
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # 전체 문서 보기 (확장 가능)
                 with st.expander("📄 전체 문서 보기", expanded=False):
                     st.text_area("", full_text[:5000], height=200, key=f"full_{doc_id}", disabled=True)
             
-            # 페이지네이션
             if total_pages > 1:
                 st.markdown("<br>", unsafe_allow_html=True)
                 pagination_cols = st.columns([1, 2, 1])
@@ -559,7 +524,6 @@ def main():
                         st.session_state.current_page += 1
                         st.rerun()
             
-            # 결과 수 조정
             st.markdown("---")
             new_per_page = st.selectbox(
                 "페이지당 결과 수",

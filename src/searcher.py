@@ -62,7 +62,7 @@ class SearchEngine:
             }
         """
         if self.splade_retriever:
-            # Force SPLADE when available for consistent behavior.
+            # force SPLADE when available
             method = "splade"
         expanded_query = query
         if use_query_expansion and self.query_expander:

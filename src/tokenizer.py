@@ -4,7 +4,6 @@
 """
 import re
 
-# 영어 stopwords
 STOPWORDS = {
     "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
     "of", "with", "by", "from", "as", "is", "was", "are", "were", "been",
@@ -33,11 +32,9 @@ class Tokenizer:
         
         tokens = self._pattern.findall(text)
         
-        # stopwords 제거
         if self.use_stopwords:
             tokens = [t for t in tokens if t not in STOPWORDS]
         
-        # 짧은 토큰 제거
         tokens = [t for t in tokens if len(t) >= self.min_len]
         
         return tokens

@@ -60,7 +60,6 @@ class BM25Ranker:
                 doc_len = self.index.doc_len[doc_id]
                 doc_scores[doc_id] += self._calc_term_score(term, tf, doc_len)
         
-        # 점수순 정렬
         ranked = sorted(doc_scores.items(), key=lambda x: x[1], reverse=True)
         
         return ranked[:top_k]

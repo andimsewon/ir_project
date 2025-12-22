@@ -52,7 +52,6 @@ class TFIDFRanker:
                 doc_tf = self._calc_tf(tf)
                 doc_scores[doc_id] += (doc_tf * idf) * q_weight
 
-        # Length normalization (simple).
         for doc_id in list(doc_scores.keys()):
             doc_len = self.index.doc_len.get(doc_id, 0) or 1
             doc_scores[doc_id] /= doc_len

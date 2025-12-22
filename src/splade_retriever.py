@@ -96,7 +96,6 @@ class SpladeRetriever:
             for doc_idx, d_weight in postings:
                 scores[doc_idx] = scores.get(doc_idx, 0.0) + (q_weight * d_weight)
 
-        # Cosine normalization using sparse norms.
         results = []
         for doc_idx, score in scores.items():
             denom = self.doc_norms[doc_idx] * q_norm
@@ -139,6 +138,7 @@ class SpladeRetriever:
             self.model.eval()
 
     def _encode_texts(self, texts: List[str]) -> List[torch.Tensor]:
+        # compute max-pooled token weights
         inputs = self.tokenizer(
             texts,
             padding=True,

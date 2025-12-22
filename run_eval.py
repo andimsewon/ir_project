@@ -21,6 +21,7 @@ RESULTS_DIR = "results"
 
 
 def run_eval(split="validation", method="bm25"):
+    # method: bm25 | splade | dense_ann
     qrels_path = os.path.join(DATA_DIR, f"qrels_{split}.tsv")
     queries_path = os.path.join(DATA_DIR, f"queries_{split}.tsv")
 

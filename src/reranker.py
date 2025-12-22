@@ -20,7 +20,6 @@ class CrossEncoderReranker:
     - ms-marco-MiniLM-L-12-v2: 더 큰 버전, 더 좋은 성능
     """
     
-    # 모델 옵션 (성능 순서)
     MODEL_OPTIONS = {
         "fast": "cross-encoder/ms-marco-MiniLM-L-6-v2",  # 가장 빠름, 작은 메모리
         "balanced": "BAAI/bge-reranker-base",  # 균형잡힌 성능 (권장)
@@ -35,7 +34,6 @@ class CrossEncoderReranker:
             device: "cpu", "cuda", "mps" 또는 None (자동 감지)
             model_size: "fast", "balanced", "best"
         """
-        # device 설정
         if device:
             self.device = device
         elif torch.cuda.is_available():
@@ -45,7 +43,6 @@ class CrossEncoderReranker:
         else:
             self.device = "cpu"
         
-        # 모델 선택
         if model_size in self.MODEL_OPTIONS:
             self.model_name = self.MODEL_OPTIONS[model_size]
         else:
@@ -61,16 +58,13 @@ class CrossEncoderReranker:
             self.model.to(self.device)
             self.model.eval()
             
-            # 모델 최적화 (CPU에서 더 빠르게)
             if self.device == "cpu":
-                # CPU 최적화 (추후 적용 가능)
                 pass
             
             print(f"[Reranker] Model loaded successfully")
         except Exception as e:
             print(f"[Reranker] Error loading model: {e}")
             print(f"[Reranker] Falling back to default model")
-            # 폴백: 기본 모델 사용
             self.model_name = self.MODEL_OPTIONS["fast"]
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             self.model = AutoModelForSequenceClassification.from_pretrained(self.model_name)
@@ -92,22 +86,18 @@ class CrossEncoderReranker:
         if not candidates:
             return []
         
-        # 문서 텍스트 가져오기
         docs = []
         for doc_id, _ in candidates:
             text = doc_store.get(doc_id, "")
             if text:
-                # 텍스트 길이 제한 (모델에 따라 다름)
                 max_length = 512 if "bge" in self.model_name.lower() else 1500
                 docs.append((doc_id, text[:max_length]))
         
         if not docs:
             return []
         
-        # 배치 처리
         scores = self._batch_predict(query, docs)
         
-        # (doc_id, score) 쌍으로 정렬
         results = [(doc_id, score) for (doc_id, _), score in zip(docs, scores)]
         results.sort(key=lambda x: x[1], reverse=True)
         
@@ -117,19 +107,15 @@ class CrossEncoderReranker:
         """배치 단위로 점수 예측 (CPU 최적화)"""
         all_scores = []
         
-        # CPU에서는 더 작은 배치 크기 사용
         if self.device == "cpu":
             batch_size = min(batch_size, 8)
         
         for i in range(0, len(docs), batch_size):
             batch = docs[i:i + batch_size]
             
-            # BGE 모델은 다른 입력 형식 사용
             if "bge" in self.model_name.lower():
-                # BGE: [query, doc] 형식
                 pairs = [[query, text] for _, text in batch]
             else:
-                # Cross-encoder: [query, doc] 형식
                 pairs = [[query, text] for _, text in batch]
             
             inputs = self.tokenizer(
@@ -144,7 +130,6 @@ class CrossEncoderReranker:
             with torch.no_grad():
                 outputs = self.model(**inputs)
                 
-                # 출력 형식 처리
                 if hasattr(outputs, 'logits'):
                     logits = outputs.logits.squeeze(-1)
                 else:
@@ -176,7 +161,6 @@ class LightweightReranker:
         else:
             self.device = "cpu"
         
-        # 경량 모델 사용
         model_name = "cross-encoder/ms-marco-MiniLM-L-6-v2"
         print(f"[LightweightReranker] Loading: {model_name}")
         print(f"[LightweightReranker] Device: {self.device}")
@@ -197,13 +181,10 @@ class LightweightReranker:
         if not docs:
             return []
         
-        # 쿼리-문서 쌍 생성
         pairs = [[query, text] for _, text in docs]
         
-        # 점수 예측
         scores = self.model.predict(pairs)
         
-        # 정렬
         results = [(doc_id, float(score)) for (doc_id, _), score in zip(docs, scores)]
         results.sort(key=lambda x: x[1], reverse=True)
         

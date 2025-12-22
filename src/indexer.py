@@ -36,17 +36,16 @@ class InvertedIndex:
         tokens = self.tokenizer.tokenize(text)
         self.doc_len[doc_id] = len(tokens)
         
-        # term frequency 계산
         tf_dict = defaultdict(int)
         for token in tokens:
             tf_dict[token] += 1
         
-        # posting list에 추가
         for term, tf in tf_dict.items():
             self.posting_list[term].append((doc_id, tf))
             self.doc_freq[term] += 1
     
     def build_from_file(self, filepath):
+        # load tsv and build postings
         """TSV 파일에서 인덱스 구축"""
         print(f"[Indexer] Loading documents from {filepath}")
         

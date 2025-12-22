@@ -54,6 +54,7 @@ class DenseRetriever:
         self.ann_index = None
 
     def build_index(self, doc_store: Dict[str, str], batch_size: int = 64, show_progress: bool = True):
+        # encode docs in batches
         """Encode all documents and store normalized embeddings."""
         items = list(doc_store.items())
         self.doc_ids = []
@@ -146,7 +147,8 @@ class DenseRetriever:
 
         return results
 
-    def _build_ann_index(self):
+        # build FAISS ANN index if enabled
+def _build_ann_index(self):
         if not self.ann_enabled or self.embeddings is None:
             self.ann_index = None
             return

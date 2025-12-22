@@ -7,7 +7,6 @@ print("=" * 50)
 print("데이터 파일 확인")
 print("=" * 50)
 
-# documents.tsv 확인
 doc_path = os.path.join(data_dir, "documents.tsv")
 if os.path.exists(doc_path):
     size_mb = os.path.getsize(doc_path) / (1024 * 1024)
@@ -15,7 +14,6 @@ if os.path.exists(doc_path):
     print(f"  존재: 예")
     print(f"  크기: {size_mb:.2f} MB")
     
-    # 첫 몇 줄 확인
     with open(doc_path, 'r', encoding='utf-8') as f:
         lines = []
         for i, line in enumerate(f):
@@ -29,7 +27,6 @@ if os.path.exists(doc_path):
 else:
     print(f"\ndocuments.tsv: 존재하지 않음")
 
-# queries 파일 확인
 for split in ["training", "validation", "test"]:
     qpath = os.path.join(data_dir, f"queries_{split}.tsv")
     if os.path.exists(qpath):
@@ -43,7 +40,6 @@ for split in ["training", "validation", "test"]:
     else:
         print(f"\nqueries_{split}.tsv: 존재하지 않음")
 
-# qrels 파일 확인
 for split in ["training", "validation", "test"]:
     qpath = os.path.join(data_dir, f"qrels_{split}.tsv")
     if os.path.exists(qpath):

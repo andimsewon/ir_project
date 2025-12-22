@@ -17,7 +17,6 @@ class QueryExpander:
     - 임베딩 기반 확장 (LLM 활용, 선택적)
     """
     
-    # 간단한 동의어 사전 (예시)
     SYNONYMS = {
         "car": ["automobile", "vehicle", "auto"],
         "automobile": ["car", "vehicle", "auto"],
@@ -51,7 +50,6 @@ class QueryExpander:
         if use_embedding:
             try:
                 from sentence_transformers import SentenceTransformer
-                # 작고 빠른 임베딩 모델
                 model_name = "sentence-transformers/all-MiniLM-L6-v2"
                 print(f"[QueryExpander] Loading embedding model: {model_name}")
                 self.embedding_model = SentenceTransformer(model_name)
@@ -76,7 +74,6 @@ class QueryExpander:
         
         for term in terms:
             synonyms = self.SYNONYMS.get(term.lower(), [])
-            # 최대 max_expansions개만 추가
             for syn in synonyms[:max_expansions]:
                 if syn.lower() not in [t.lower() for t in expanded_terms]:
                     expanded_terms.append(syn)
@@ -100,22 +97,18 @@ class QueryExpander:
         query_terms = set(self.tokenizer.tokenize(query))
         cooccurrence_scores = Counter()
         
-        # 각 쿼리 단어의 posting list를 확인
         for term in query_terms:
             posting = self.index.get_posting(term)
             doc_ids_with_term = {doc_id for doc_id, _ in posting}
             
-            # 해당 문서들에서 함께 나타나는 다른 단어 찾기
             for other_term, other_posting in self.index.posting_list.items():
                 if other_term in query_terms:
                     continue
                 
                 doc_ids_with_other = {doc_id for doc_id, _ in other_posting}
-                # 공출현 문서 수
                 cooccur_count = len(doc_ids_with_term & doc_ids_with_other)
                 
                 if cooccur_count > 0:
-                    # IDF 가중치 적용
                     doc_freq = self.index.get_doc_freq(other_term)
                     total_docs = self.index.total_docs or 0
                     if total_docs > 0:
@@ -123,7 +116,6 @@ class QueryExpander:
                         score = cooccur_count * idf
                         cooccurrence_scores[other_term] += score
         
-        # 상위 k개 단어 추가
         expanded_terms = list(query_terms)
         for term, _ in cooccurrence_scores.most_common(top_k):
             expanded_terms.append(term)
@@ -145,15 +137,11 @@ class QueryExpander:
             return query
         
         try:
-            # 쿼리 임베딩
             query_embedding = self.embedding_model.encode(query, convert_to_tensor=True)
             
-            # 인덱스의 주요 단어들 중에서 유사한 단어 찾기
-            # (빈도가 높은 단어들만 고려하여 계산량 감소)
             candidate_terms = []
             query_terms = set(self.tokenizer.tokenize(query))
             
-            # 상위 빈도 단어들만 후보로 선택 (성능 최적화)
             term_freqs = [(term, len(posting)) for term, posting in self.index.posting_list.items()]
             term_freqs.sort(key=lambda x: x[1], reverse=True)
             top_terms = [term for term, _ in term_freqs[:1000]]  # 상위 1000개만
@@ -165,17 +153,14 @@ class QueryExpander:
             if not candidate_terms:
                 return query
             
-            # 후보 단어들의 임베딩 계산
             term_embeddings = self.embedding_model.encode(
                 candidate_terms[:100],  # 최대 100개만 (성능 최적화)
                 convert_to_tensor=True
             )
             
-            # 코사인 유사도 계산
             from torch.nn.functional import cosine_similarity
             similarities = cosine_similarity(query_embedding.unsqueeze(0), term_embeddings)[0]
             
-            # 상위 k개 선택
             top_indices = similarities.topk(min(top_k, len(candidate_terms))).indices
             expanded_terms = list(query_terms)
             
@@ -207,7 +192,6 @@ class QueryExpander:
         elif method == "embedding":
             return self.expand_with_embedding(query, **kwargs)
         elif method == "hybrid":
-            # 하이브리드: 동의어 + 공출현
             expanded = self.expand_with_synonyms(query, **kwargs)
             expanded = self.expand_with_cooccurrence(expanded, top_k=2)
             return expanded

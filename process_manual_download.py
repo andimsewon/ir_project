@@ -16,17 +16,13 @@ def process_csv_to_tsv(csv_path, tsv_path, header=None):
     with open(csv_path, 'r', encoding='utf-8') as csv_file, \
          open(tsv_path, 'w', encoding='utf-8') as tsv_file:
         
-        # CSV 리더 설정 (큰 필드 크기 허용)
         csv.field_size_limit(min(2147483647, sys.maxsize))
         reader = csv.reader(csv_file)
         
-        # 헤더 작성
         if header:
             tsv_file.write(header + '\n')
         
-        # 데이터 변환
         for row in reader:
-            # 탭과 줄바꿈을 공백으로 대체
             cleaned_row = [cell.replace('\t', ' ').replace('\n', ' ') for cell in row]
             tsv_file.write('\t'.join(cleaned_row) + '\n')
 
@@ -46,9 +42,7 @@ def process_qrels(qrel_path, qrels_tsv_path, qrels_trec_path):
                     query_id = parts[0]
                     doc_id = parts[2]
                     relevance = parts[3]
-                    # TSV 형식
                     f_tsv.write(f"{query_id}\t{doc_id}\t{relevance}\n")
-                    # TREC 형식
                     f_trec.write(f"{query_id} 0 {doc_id} {relevance}\n")
 
 
@@ -73,7 +67,6 @@ def process_manual_download(source_dir):
     print("=" * 50)
     print(f"소스 디렉토리: {source_path}")
     
-    # documents.tsv
     doc_csv = source_path / "documents.csv"
     if doc_csv.exists():
         doc_tsv = os.path.join(DATA_DIR, "documents.tsv")
@@ -82,7 +75,6 @@ def process_manual_download(source_dir):
     else:
         print(f"\n경고: {doc_csv}를 찾을 수 없습니다.")
     
-    # 각 split 처리
     for split in ["training", "validation", "test"]:
         split_path = source_path / split
         if not split_path.exists():
@@ -91,7 +83,6 @@ def process_manual_download(source_dir):
         
         print(f"\n처리 중: {split}")
         
-        # queries
         query_csv = split_path / "queries.csv"
         if query_csv.exists():
             qpath = os.path.join(DATA_DIR, f"queries_{split}.tsv")
@@ -99,7 +90,6 @@ def process_manual_download(source_dir):
         else:
             print(f"  경고: {query_csv}를 찾을 수 없습니다.")
         
-        # qrels
         qrel_file = split_path / "qrels"
         if qrel_file.exists():
             qrels_tsv = os.path.join(DATA_DIR, f"qrels_{split}.tsv")
@@ -115,11 +105,9 @@ def process_manual_download(source_dir):
 
 
 if __name__ == "__main__":
-    # 명령줄 인자로 경로를 받거나, 기본 경로 사용
     if len(sys.argv) > 1:
         source_dir = sys.argv[1]
     else:
-        # 기본 경로들 시도
         possible_paths = [
             "wikIR1k_extracted/wikIR1k",
             "wikIR1k",
@@ -128,7 +116,6 @@ if __name__ == "__main__":
         source_dir = None
         for path in possible_paths:
             if Path(path).exists():
-                # documents.csv가 있는지 확인
                 if (Path(path) / "documents.csv").exists() or \
                    any((Path(path) / split / "queries.csv").exists() for split in ["training", "validation", "test"]):
                     source_dir = path

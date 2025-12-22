@@ -89,16 +89,13 @@ class Evaluator:
             retrieved = [doc_id for doc_id, _ in run[qid]]
             relevant = self.qrels.get(qid, {})
             
-            # MAP
             metrics['MAP'].append(self._ap(retrieved, relevant))
             
-            # P@k, R@k, nDCG@k
             for k in k_list:
                 metrics[f'P@{k}'].append(self._precision_at_k(retrieved, relevant, k))
                 metrics[f'R@{k}'].append(self._recall_at_k(retrieved, relevant, k))
                 metrics[f'nDCG@{k}'].append(self._ndcg_at_k(retrieved, relevant, k))
         
-        # 평균 계산
         results = {}
         for name, values in metrics.items():
             results[name] = sum(values) / len(values) if values else 0.0
@@ -169,13 +166,11 @@ class Evaluator:
         if not relevant:
             return 0.0
         
-        # DCG
         dcg = 0.0
         for i, doc in enumerate(retrieved[:k]):
             rel = relevant.get(doc, 0)
             dcg += rel / math.log2(i + 2)
         
-        # IDCG
         ideal = sorted(relevant.values(), reverse=True)[:k]
         idcg = sum(rel / math.log2(i + 2) for i, rel in enumerate(ideal))
         
