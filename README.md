@@ -183,6 +183,18 @@ streamlit run app.py
 
 Open `http://localhost:8501` in your browser.
 
+### 5-quick) Lightweight BM25-only UI
+
+A minimal Streamlit app that uses only BM25 and avoids importing heavy dependencies (transformers/torch). As long as the BM25 index exists, you can run it immediately:
+
+```bash
+pip install -r requirements-bm25.txt   # install minimal, lightweight deps
+python build_index.py                   # first time only, if needed
+streamlit run app_bm25.py
+```
+
+This mode fixes the method to BM25 and disables reranker/query expansion.
+
 ### 5-1) Web UI usage (method-selectable, default Dense)
 
 1) Select a retrieval method (Dense is default)
@@ -197,6 +209,23 @@ Open `http://localhost:8501` in your browser.
 
 ```bash
 python cli_search.py --top-k 10
+```
+
+---
+
+## One-line macOS Run
+
+For a quick start on macOS that sets up a venv, installs deps with fallbacks, builds the index if needed, and launches the web UI:
+
+```bash
+bash scripts/run_mac.sh
+```
+
+If dependency installation fails due to native builds (e.g., pytrec_eval or faiss-cpu), the script falls back to a minimal set required for the web UI. For evaluation, install the extras later:
+
+```bash
+source .venv/bin/activate
+pip install pytrec_eval faiss-cpu
 ```
 
 ---

@@ -9,7 +9,12 @@ import os
 
 import torch
 from sentence_transformers import SentenceTransformer
-from tqdm import tqdm
+# tqdm is optional: provide a lightweight fallback
+try:
+    from tqdm import tqdm  # type: ignore
+except Exception:  # pragma: no cover
+    def tqdm(iterable=None, **kwargs):
+        return iterable if iterable is not None else []
 
 try:
     import faiss

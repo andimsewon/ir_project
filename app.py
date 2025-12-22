@@ -176,27 +176,31 @@ st.markdown(
 @st.cache_resource
 def load_engine():
     """Load search engine components with caching."""
+    print("[Engine] load_engine(): start")
     from src.indexer import InvertedIndex
     from src.ranker import BM25Ranker
     from src.tfidf_ranker import TFIDFRanker
     from src.reranker import CrossEncoderReranker
     from src.query_expander import QueryExpander
     from src.searcher import SearchEngine
-    from src.splade_retriever import SpladeRetriever
-    from src.dense_retriever import DenseRetriever
+    # Lazy-import heavy retrievers only if needed to avoid hard deps
 
     index_path = "data/index.pkl"
     if not os.path.exists(index_path):
+        print("[Engine] index not found:", index_path)
         return None
 
+    print("[Engine] Loading inverted index from", index_path)
     index = InvertedIndex()
     index.load(index_path)
 
+    print("[Engine] Building rankers (BM25/TF-IDF)")
     bm25_ranker = BM25Ranker(index)
     tfidf_ranker = TFIDFRanker(index)
 
     reranker = None
     try:
+        print("[Engine] Initializing reranker (may take a while)...")
         reranker = CrossEncoderReranker(model_size="balanced")
     except Exception as exc:
         print(f"[Warning] Reranker disabled: {exc}")
@@ -207,16 +211,36 @@ def load_engine():
 
     splade_retriever = None
     splade_path = "data/splade_index.pt"
-    if os.path.exists(splade_path):
-        splade_retriever = SpladeRetriever(device=device)
-        splade_retriever.load(splade_path)
+    fast_start = os.environ.get("FAST_START") == "1"
+    if os.path.exists(splade_path) and not fast_start:
+        try:
+            print("[Engine] Initializing SPLADE retriever (heavy). Loading model & index...")
+            from src.splade_retriever import SpladeRetriever
+            splade_retriever = SpladeRetriever(device=device)
+            splade_retriever.load(splade_path)
+            print("[Engine] SPLADE index loaded:", splade_path)
+        except Exception as exc:
+            print(f"[Warning] SPLADE disabled: {exc}")
+            splade_retriever = None
+    elif os.path.exists(splade_path) and fast_start:
+        print("[Engine] FAST_START=1 -> skipping SPLADE init")
 
     dense_retriever = None
     dense_path = "data/dense_index.pt"
-    if os.path.exists(dense_path):
-        dense_retriever = DenseRetriever(device=device)
-        dense_retriever.load(dense_path)
+    if os.path.exists(dense_path) and not fast_start:
+        try:
+            print("[Engine] Initializing Dense retriever (heavy). Loading model & index...")
+            from src.dense_retriever import DenseRetriever
+            dense_retriever = DenseRetriever(device=device)
+            dense_retriever.load(dense_path)
+            print("[Engine] Dense index loaded:", dense_path)
+        except Exception as exc:
+            print(f"[Warning] Dense retriever disabled: {exc}")
+            dense_retriever = None
+    elif os.path.exists(dense_path) and fast_start:
+        print("[Engine] FAST_START=1 -> skipping Dense init")
 
+    print("[Engine] Constructing SearchEngine")
     return SearchEngine(
         index,
         bm25_ranker,

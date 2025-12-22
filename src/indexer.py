@@ -5,7 +5,12 @@ Inverted Index 구축 담당
 import pickle
 import math
 from collections import defaultdict
-from tqdm import tqdm
+# tqdm is optional: fall back to identity iterator when unavailable
+try:
+    from tqdm import tqdm  # type: ignore
+except Exception:  # pragma: no cover
+    def tqdm(iterable=None, **kwargs):  # minimal fallback
+        return iterable if iterable is not None else []
 
 from .tokenizer import Tokenizer
 

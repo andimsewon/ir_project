@@ -164,6 +164,18 @@ streamlit run app.py
 
 브라우저에서 `http://localhost:8501` 접속
 
+### 5-quick) 경량 BM25 전용 UI 실행
+
+모든 무거운 의존성(Transformers/torch 등)을 불필요하게 로드하지 않는 BM25 전용 경량 앱입니다. 인덱스만 준비되어 있으면 바로 실행됩니다.
+
+```bash
+pip install -r requirements-bm25.txt   # 경량 의존성만 설치 (권장)
+python build_index.py                   # 최초 1회 (없다면)
+streamlit run app_bm25.py
+```
+
+이 모드에서는 검색 방법 선택/리랭커/쿼리 확장 없이 BM25만 동작합니다.
+
 ### 5-1) 웹 UI 사용 방법 (검색 방법 선택, 기본 Dense)
 
 1) 검색 방법 선택 (기본값 Dense)  
@@ -178,6 +190,23 @@ streamlit run app.py
 
 ```bash
 python cli_search.py --top-k 10
+```
+
+---
+
+## macOS 한 줄 실행
+
+가상환경 생성/활성화, 의존성 설치(실패 시 최소 구성으로 대체), 인덱스 생성 여부 확인, Streamlit 실행까지 한 번에:
+
+```bash
+bash scripts/run_mac.sh
+```
+
+설치 과정에서 네이티브 빌드가 필요한 패키지(pytrec_eval, faiss-cpu 등)가 실패하면 웹 UI에 필요한 최소 패키지로 대체 설치합니다. 추후 평가를 위해 필요하다면 다음으로 추가 설치하세요:
+
+```bash
+source .venv/bin/activate
+pip install pytrec_eval faiss-cpu
 ```
 
 ---
