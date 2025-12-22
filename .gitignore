@@ -1,7 +1,13 @@
 venv/
 data/
 results/
+wikIR1k/
+wikIR1k_extracted/
+_tmp/
+.ir_datasets_cache/
+.ir_datasets_tmp/
 __pycache__/
 *.pkl
+*.pt
 *.pyc
 .DS_Store
