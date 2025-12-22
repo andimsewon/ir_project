@@ -1,72 +1,61 @@
 """
-TF-IDF 랭커 모듈
-TF-IDF 스코어링 알고리즘 구현
+TF-IDF ranking module.
+Scores documents using a simple TF-IDF dot product.
 """
 import math
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from .tokenizer import Tokenizer
 
 
 class TFIDFRanker:
-    """
-    TF-IDF 랭킹 알고리즘
-    
-    TF-IDF(t,d) = TF(t,d) × IDF(t)
-    
-    TF(t,d) = (단어 t가 문서 d에서 나타난 횟수) / (문서 d의 총 단어 수)
-    IDF(t) = log(N / DF(t))
-    """
-    
+    """TF-IDF scoring ranker."""
+
     def __init__(self, index):
         self.index = index
         self.tokenizer = Tokenizer()
-    
+
     def _calc_idf(self, term):
-        """IDF 계산"""
-        N = self.index.total_docs
+        """Compute IDF with smoothing."""
+        total_docs = self.index.total_docs or 0
         df = self.index.get_doc_freq(term)
-        if df == 0:
+        return math.log((total_docs + 1) / (df + 1)) + 1.0
+
+    @staticmethod
+    def _calc_tf(freq):
+        """Compute log-scaled TF."""
+        if freq <= 0:
             return 0.0
-        return math.log(N / df)
-    
-    def _calc_tf(self, term_freq, doc_len):
-        """TF 계산 (정규화된 빈도)"""
-        if doc_len == 0:
-            return 0.0
-        return term_freq / doc_len
-    
-    def _calc_tfidf(self, term, tf, doc_len):
-        """TF-IDF 점수 계산"""
-        idf = self._calc_idf(term)
-        tf_score = self._calc_tf(tf, doc_len)
-        return tf_score * idf
-    
+        return 1.0 + math.log(freq)
+
     def score(self, query, top_k=100):
         """
-        쿼리에 대해 문서들의 TF-IDF 점수 계산
-        
-        Returns: [(doc_id, score), ...] 점수 내림차순
+        Score documents for a query using TF-IDF.
+
+        Returns: [(doc_id, score), ...] sorted by score desc.
         """
-        query_terms = self.tokenizer.tokenize(query)
-        
-        if not query_terms:
+        terms = self.tokenizer.tokenize(query)
+        if not terms:
             return []
-        
+
+        query_tf = Counter(terms)
+        query_weights = {term: self._calc_tf(freq) for term, freq in query_tf.items()}
+
         doc_scores = defaultdict(float)
-        
-        for term in query_terms:
+        for term, q_weight in query_weights.items():
             posting = self.index.get_posting(term)
-            
+            if not posting:
+                continue
+
+            idf = self._calc_idf(term)
             for doc_id, tf in posting:
-                doc_len = self.index.doc_len[doc_id]
-                doc_scores[doc_id] += self._calc_tfidf(term, tf, doc_len)
-        
-        # 점수순 정렬
+                doc_tf = self._calc_tf(tf)
+                doc_scores[doc_id] += (doc_tf * idf) * q_weight
+
+        # Length normalization (simple).
+        for doc_id in list(doc_scores.keys()):
+            doc_len = self.index.doc_len.get(doc_id, 0) or 1
+            doc_scores[doc_id] /= doc_len
+
         ranked = sorted(doc_scores.items(), key=lambda x: x[1], reverse=True)
-        
         return ranked[:top_k]
-
-
-
-

@@ -8,6 +8,7 @@ import os
 import time
 import tempfile
 import shutil
+import contextlib
 from tqdm import tqdm
 
 # Windows에서 csv.field_size_limit 오버플로우 문제 해결
@@ -30,20 +31,57 @@ csv.field_size_limit = _safe_field_size_limit
 # 이제 ir_datasets를 import (패치 후)
 import ir_datasets
 
+# Windows 파일 잠금 이슈를 피하기 위한 안전한 파일 완료 처리
+import ir_datasets.util as _ir_util
+
+
+@contextlib.contextmanager
+def _finalized_file_safe(path, mode="wb", retries=8, base_delay=1.0):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, mode) as f:
+        yield f
+        f.flush()
+        os.fsync(f.fileno())
+    for attempt in range(retries):
+        try:
+            os.replace(tmp_path, path)
+            return
+        except PermissionError:
+            time.sleep(base_delay * (attempt + 1))
+    # 최종 수단: 복사 후 정리 (이름 변경이 막혀도 결과 파일 보장)
+    shutil.copyfile(tmp_path, path)
+    for attempt in range(retries):
+        try:
+            os.remove(tmp_path)
+            return
+        except PermissionError:
+            time.sleep(base_delay * (attempt + 1))
+
+
+_ir_util.finialized_file = _finalized_file_safe
+
 DATA_DIR = "data"
 
 
 def download():
     os.makedirs(DATA_DIR, exist_ok=True)
     
-    # Windows에서 임시 디렉토리 정리 및 환경 변수 설정
-    # ir_datasets의 임시 디렉토리를 프로젝트 내부로 변경하여 권한 문제 완화
-    ir_datasets_tmp = os.path.join(os.getcwd(), ".ir_datasets_tmp")
-    os.makedirs(ir_datasets_tmp, exist_ok=True)
-    
-    # 환경 변수 설정 (ir_datasets가 사용할 수 있도록)
-    original_tmpdir = os.environ.get('TMPDIR') or os.environ.get('TMP') or os.environ.get('TEMP')
-    os.environ['IR_DATASETS_TMP'] = ir_datasets_tmp
+    # Windows에서 임시/캐시 디렉토리를 프로젝트 내부로 고정
+    # 권한/잠금 문제를 줄이기 위해 고유 임시 디렉토리를 사용
+    cache_dir = os.path.join(os.getcwd(), ".ir_datasets_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    os.environ["IR_DATASETS_HOME"] = cache_dir
+
+    base_tmp_root = os.path.join(os.getcwd(), "_tmp", "ir_datasets")
+    os.makedirs(base_tmp_root, exist_ok=True)
+
+    def _new_tmp_dir():
+        tmp_dir = tempfile.mkdtemp(prefix="ir_datasets_tmp_", dir=base_tmp_root)
+        os.environ["IR_DATASETS_TMP"] = tmp_dir
+        return tmp_dir
+
+    ir_datasets_tmp = _new_tmp_dir()
     
     # 문서 저장 (training에서 한 번만)
     print("=" * 50)
@@ -52,13 +90,16 @@ def download():
     print(f"임시 디렉토리: {ir_datasets_tmp}")
     
     # 재시도 로직을 포함한 데이터셋 로드 함수
-    def load_dataset_with_retry(split_name, max_retries=5, retry_delay=5):
+    def load_dataset_with_retry(split_name, max_retries=8, retry_delay=7):
         """재시도 로직이 포함된 데이터셋 로드"""
+        _new_tmp_dir()
         for attempt in range(max_retries):
             try:
                 # Windows에서 파일이 완전히 해제될 때까지 대기
                 if attempt > 0:
                     print(f"  재시도 {attempt}/{max_retries-1}... {retry_delay}초 대기 중...")
+                    # 재시도 전에 임시 디렉토리 재설정
+                    _new_tmp_dir()
                     # 재시도 전에 임시 파일 정리 시도
                     try:
                         tmp_ir_dir = os.path.join(tempfile.gettempdir(), "ir_datasets")
@@ -74,7 +115,7 @@ def download():
                     print(f"  최종 오류: {e}")
                     print(f"  팁: 안티바이러스가 파일을 스캔 중일 수 있습니다.")
                     print(f"  몇 분 후 다시 시도하거나, 임시 디렉토리를 수동으로 정리해보세요:")
-                    print(f"  {os.path.join(tempfile.gettempdir(), 'ir_datasets')}")
+                    print(f"  {base_tmp_root}")
                     raise
                 print(f"  시도 {attempt + 1} 실패: {e}")
                 continue
@@ -106,19 +147,20 @@ def download():
         # queries (재시도 로직 포함)
         qpath = os.path.join(DATA_DIR, f"queries_{split}.tsv")
         queries_success = False
-        for retry in range(3):
+        for retry in range(5):
             try:
-        with open(qpath, 'w', encoding='utf-8') as f:
-            f.write("query_id\ttext\n")
-            for q in ds.queries_iter():
-                text = q.text.replace('\t', ' ').replace('\n', ' ')
-                f.write(f"{q.query_id}\t{text}\n")
+                with open(qpath, 'w', encoding='utf-8') as f:
+                    f.write("query_id\ttext\n")
+                    for q in ds.queries_iter():
+                        text = q.text.replace('\t', ' ').replace('\n', ' ')
+                        f.write(f"{q.query_id}\t{text}\n")
                 queries_success = True
                 break
-            except (PermissionError, OSError) as e:
-                if retry < 2:
-                    print(f"  Queries 처리 중 오류 발생 (재시도 {retry + 1}/3): {e}")
-                    time.sleep(5)
+            except (PermissionError, OSError, Exception) as e:
+                if retry < 4:
+                    print(f"  Queries 처리 중 오류 발생 (재시도 {retry + 1}/5): {e}")
+                    time.sleep(5 + retry * 2)
+                    _new_tmp_dir()
                     # 데이터셋을 다시 로드
                     ds = load_dataset_with_retry(split, max_retries=3, retry_delay=3)
                 else:
@@ -133,22 +175,23 @@ def download():
         trec_path = os.path.join(DATA_DIR, f"qrels_{split}.trec")
         
         qrels_success = False
-        for retry in range(3):
+        for retry in range(5):
             try:
                 with open(qrels_path, 'w', encoding='utf-8') as f_tsv, \
                      open(trec_path, 'w', encoding='utf-8') as f_trec:
                     f_tsv.write("query_id\tdoc_id\trelevance\n")
-            for qrel in ds.qrels_iter():
+                    for qrel in ds.qrels_iter():
                         # TSV 형식
                         f_tsv.write(f"{qrel.query_id}\t{qrel.doc_id}\t{qrel.relevance}\n")
                         # TREC 형식
                         f_trec.write(f"{qrel.query_id} 0 {qrel.doc_id} {qrel.relevance}\n")
                 qrels_success = True
                 break
-            except (PermissionError, OSError) as e:
-                if retry < 2:
-                    print(f"  Qrels 처리 중 오류 발생 (재시도 {retry + 1}/3): {e}")
-                    time.sleep(5)
+            except (PermissionError, OSError, Exception) as e:
+                if retry < 4:
+                    print(f"  Qrels 처리 중 오류 발생 (재시도 {retry + 1}/5): {e}")
+                    time.sleep(5 + retry * 2)
+                    _new_tmp_dir()
                     # 데이터셋을 다시 로드
                     ds = load_dataset_with_retry(split, max_retries=3, retry_delay=3)
                 else:

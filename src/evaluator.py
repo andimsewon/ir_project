@@ -7,6 +7,11 @@ import math
 from collections import defaultdict
 from tqdm import tqdm
 
+try:
+    import pytrec_eval
+except ImportError:
+    pytrec_eval = None
+
 
 class Evaluator:
     """검색 성능 평가기"""
@@ -30,8 +35,6 @@ class Evaluator:
                 parts = line.strip().split('\t')
                 if len(parts) >= 3:
                     qid, doc_id, rel = parts[0], parts[1], int(parts[2])
-                    if qid in ("query_id", "id_left") or doc_id in ("doc_id", "id_right"):
-                        continue
                     if rel > 0:
                         qrels[qid][doc_id] = rel
         return qrels
@@ -44,23 +47,12 @@ class Evaluator:
             for line in f:
                 parts = line.strip().split('\t', 1)
                 if len(parts) == 2:
-                    if parts[0] in ("query_id", "id_left") or parts[1] in ("text", "text_left"):
-                        continue
                     queries[parts[0]] = parts[1]
         return queries
     
-    def generate_run(self, search_engine, method="bm25", use_reranker=False, 
-                     use_query_expansion=False, top_k=100, hybrid_weight=0.5):
+    def generate_run(self, search_engine, use_reranker=False, top_k=100):
         """
         전체 쿼리에 대해 검색 실행
-        
-        Args:
-            search_engine: SearchEngine 인스턴스
-            method: "bm25", "tfidf", "hybrid"
-            use_reranker: 리랭커 사용 여부
-            use_query_expansion: 쿼리 확장 사용 여부
-            top_k: 반환할 결과 수
-            hybrid_weight: 하이브리드 랭킹 가중치
         
         Returns: {qid: [(doc_id, score), ...], ...}
         """
@@ -69,11 +61,8 @@ class Evaluator:
         for qid, query_text in tqdm(self.queries.items(), desc="Searching"):
             result = search_engine.search(
                 query_text,
-                method=method,
                 top_k=top_k,
-                use_reranker=use_reranker,
-                use_query_expansion=use_query_expansion,
-                hybrid_weight=hybrid_weight
+                use_reranker=use_reranker
             )
             run[qid] = [(r['doc_id'], r['score']) for r in result['results']]
         
@@ -114,6 +103,36 @@ class Evaluator:
             results[name] = sum(values) / len(values) if values else 0.0
         
         return results
+
+    def evaluate_pytrec(self, run, k=10):
+        """
+        Evaluate with pytrec_eval to match TREC-style metrics.
+
+        Returns: {metric_name: value, ...}
+        """
+        if pytrec_eval is None:
+            raise RuntimeError("pytrec_eval is not installed. Install it to run TREC evaluation.")
+
+        run_dict = {}
+        for qid, results in run.items():
+            run_dict[qid] = {doc_id: float(score) for doc_id, score in results}
+
+        metrics = {"map", f"P.{k}", f"ndcg_cut.{k}"}
+        evaluator = pytrec_eval.RelevanceEvaluator(self.qrels, metrics)
+        per_query = evaluator.evaluate(run_dict)
+
+        if not per_query:
+            return {"MAP": 0.0, f"P@{k}": 0.0, f"nDCG@{k}": 0.0}
+
+        map_scores = [vals.get("map", 0.0) for vals in per_query.values()]
+        p_scores = [vals.get(f"P_{k}", 0.0) for vals in per_query.values()]
+        ndcg_scores = [vals.get(f"ndcg_cut_{k}", 0.0) for vals in per_query.values()]
+
+        return {
+            "MAP": sum(map_scores) / len(map_scores),
+            f"P@{k}": sum(p_scores) / len(p_scores),
+            f"nDCG@{k}": sum(ndcg_scores) / len(ndcg_scores),
+        }
     
     def _precision_at_k(self, retrieved, relevant, k):
         """Precision@k"""
@@ -153,11 +172,11 @@ class Evaluator:
         dcg = 0.0
         for i, doc in enumerate(retrieved[:k]):
             rel = relevant.get(doc, 0)
-            dcg += (2**rel - 1) / math.log2(i + 2)
+            dcg += rel / math.log2(i + 2)
         
         # IDCG
         ideal = sorted(relevant.values(), reverse=True)[:k]
-        idcg = sum((2**rel - 1) / math.log2(i + 2) for i, rel in enumerate(ideal))
+        idcg = sum(rel / math.log2(i + 2) for i, rel in enumerate(ideal))
         
         return dcg / idcg if idcg > 0 else 0.0
     

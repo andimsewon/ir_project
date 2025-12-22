@@ -1,45 +1,7 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
 venv/
-env/
-ENV/
-
-# Data files (?? ? ??)
-data/documents.tsv
-data/index.pkl
-data/*.tsv
-data/*.trec
-
-# Large datasets / caches
-.ir_datasets_tmp/
-wikIR1k/
-wikIR1k/documents.csv
-wikIR1k_extracted/wikIR1k/documents.csv
-wikIR1k_extracted/
-_tmp/
-
-# Results (?? ? ??)
-# results/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
+data/
+results/
+__pycache__/
+*.pkl
+*.pyc
 .DS_Store
-Thumbs.db
-
-# Streamlit
-.streamlit/
-
-# Logs
-*.log
-
-# Config (?? ??)
-config/secret_key

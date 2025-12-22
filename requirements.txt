@@ -4,3 +4,4 @@ transformers>=4.30.0
 streamlit>=1.24.0
 tqdm>=4.65.0
 sentence-transformers>=2.2.0
+pytrec_eval>=0.5

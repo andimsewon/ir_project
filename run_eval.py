@@ -6,20 +6,16 @@ import os
 import argparse
 from src.indexer import InvertedIndex
 from src.ranker import BM25Ranker
-from src.tfidf_ranker import TFIDFRanker
 from src.reranker import CrossEncoderReranker
-from src.query_expander import QueryExpander
-from src.dense_retriever import DenseRetriever
 from src.searcher import SearchEngine
 from src.evaluator import Evaluator
 
 DATA_DIR = "data"
 INDEX_PATH = os.path.join(DATA_DIR, "index.pkl")
-DENSE_INDEX_PATH = os.path.join(DATA_DIR, "dense_index.pt")
 RESULTS_DIR = "results"
 
 
-def run_eval(split="validation", include_dense=False):
+def run_eval(split="validation"):
     # 경로 설정
     qrels_path = os.path.join(DATA_DIR, f"qrels_{split}.tsv")
     queries_path = os.path.join(DATA_DIR, f"queries_{split}.tsv")
@@ -44,22 +40,16 @@ def run_eval(split="validation", include_dense=False):
     index = InvertedIndex()
     index.load(INDEX_PATH)
     
-    print("Loading rankers...")
-    bm25_ranker = BM25Ranker(index)
-    tfidf_ranker = TFIDFRanker(index)
+    print("Loading reranker...")
+    ranker = BM25Ranker(index)
     reranker = None
-    query_expander = QueryExpander(index)
-
-    dense_retriever = None
-    if include_dense:
-        if os.path.exists(DENSE_INDEX_PATH):
-            print("Loading dense index...")
-            dense_retriever = DenseRetriever()
-            dense_retriever.load(DENSE_INDEX_PATH)
-        else:
-            print(f"Warning: {DENSE_INDEX_PATH} not found. Skipping dense retrieval.")
-
-    engine = SearchEngine(index, bm25_ranker, reranker, tfidf_ranker, query_expander, dense_retriever)
+    reranker_available = True
+    try:
+        reranker = CrossEncoderReranker()
+    except Exception as exc:
+        reranker_available = False
+        print(f"[Warning] Reranker disabled: {exc}")
+    engine = SearchEngine(index, ranker, reranker)
     
     print("Loading evaluator...")
     evaluator = Evaluator(qrels_path, queries_path)
@@ -69,119 +59,67 @@ def run_eval(split="validation", include_dense=False):
     print("Evaluating BM25...")
     print("-" * 60)
     
-    run_bm25 = evaluator.generate_run(engine, method="bm25", use_reranker=False, top_k=100)
+    run_bm25 = evaluator.generate_run(engine, use_reranker=False, top_k=100)
     evaluator.save_run_trec(
         run_bm25,
         os.path.join(RESULTS_DIR, f"bm25_{split}.txt"),
         "BM25"
     )
     results_bm25 = evaluator.evaluate(run_bm25)
+    try:
+        results_bm25_trec = evaluator.evaluate_pytrec(run_bm25, k=10)
+    except RuntimeError as exc:
+        print(f"[Error] {exc}")
+        print("Install pytrec_eval and rerun evaluation.")
+        return
     
     print("\nBM25 Results:")
     for metric, val in results_bm25.items():
         print(f"  {metric}: {val:.4f}")
-    
-    # === TF-IDF 평가 ===
-    print("\n" + "-" * 60)
-    print("Evaluating TF-IDF...")
-    print("-" * 60)
-    
-    run_tfidf = evaluator.generate_run(engine, method="tfidf", use_reranker=False, top_k=100)
-    evaluator.save_run_trec(
-        run_tfidf,
-        os.path.join(RESULTS_DIR, f"tfidf_{split}.txt"),
-        "TF-IDF"
-    )
-    results_tfidf = evaluator.evaluate(run_tfidf)
-    
-    print("\nTF-IDF Results:")
-    for metric, val in results_tfidf.items():
+    print("BM25 (pytrec_eval):")
+    for metric, val in results_bm25_trec.items():
         print(f"  {metric}: {val:.4f}")
     
-    # === Hybrid 평가 ===
-    print("\n" + "-" * 60)
-    print("Evaluating Hybrid (BM25 + TF-IDF)...")
-    print("-" * 60)
-    
-    run_hybrid = evaluator.generate_run(engine, method="hybrid", use_reranker=False, top_k=100)
-    evaluator.save_run_trec(
-        run_hybrid,
-        os.path.join(RESULTS_DIR, f"hybrid_{split}.txt"),
-        "Hybrid"
-    )
-    results_hybrid = evaluator.evaluate(run_hybrid)
-    
-    print("\nHybrid Results:")
-    for metric, val in results_hybrid.items():
-        print(f"  {metric}: {val:.4f}")
-    
-    results_dense = None
-    results_hybrid_dense = None
-    if include_dense and dense_retriever:
-        print("\n" + "-" * 60)
-        print("Evaluating Dense Retrieval...")
-        print("-" * 60)
-
-        run_dense = evaluator.generate_run(engine, method="dense", use_reranker=False, top_k=100)
-        evaluator.save_run_trec(
-            run_dense,
-            os.path.join(RESULTS_DIR, f"dense_{split}.txt"),
-            "Dense"
-        )
-        results_dense = evaluator.evaluate(run_dense)
-
-        print("\nDense Results:")
-        for metric, val in results_dense.items():
-            print(f"  {metric}: {val:.4f}")
-
-        print("\n" + "-" * 60)
-        print("Evaluating Hybrid (BM25 + Dense)...")
-        print("-" * 60)
-
-        run_hybrid_dense = evaluator.generate_run(engine, method="hybrid_dense", use_reranker=False, top_k=100)
-        evaluator.save_run_trec(
-            run_hybrid_dense,
-            os.path.join(RESULTS_DIR, f"hybrid_dense_{split}.txt"),
-            "HybridDense"
-        )
-        results_hybrid_dense = evaluator.evaluate(run_hybrid_dense)
-
-        print("\nHybrid (BM25 + Dense) Results:")
-        for metric, val in results_hybrid_dense.items():
-            print(f"  {metric}: {val:.4f}")
-
     # === BM25 + Reranker 평가 ===
     print("\n" + "-" * 60)
     print("Evaluating BM25 + Reranker...")
     print("-" * 60)
     
-    reranker = CrossEncoderReranker()
-    engine.reranker = reranker
-    run_rerank = evaluator.generate_run(engine, method="bm25", use_reranker=True, top_k=100)
-    evaluator.save_run_trec(
-        run_rerank,
-        os.path.join(RESULTS_DIR, f"rerank_{split}.txt"),
-        "BM25+Reranker"
-    )
-    results_rerank = evaluator.evaluate(run_rerank)
-    
-    print("\nBM25 + Reranker Results:")
-    for metric, val in results_rerank.items():
-        print(f"  {metric}: {val:.4f}")
+    results_rerank = None
+    results_rerank_trec = None
+    if reranker_available:
+        run_rerank = evaluator.generate_run(engine, use_reranker=True, top_k=100)
+        evaluator.save_run_trec(
+            run_rerank,
+            os.path.join(RESULTS_DIR, f"rerank_{split}.txt"),
+            "BM25+Reranker"
+        )
+        results_rerank = evaluator.evaluate(run_rerank)
+        results_rerank_trec = evaluator.evaluate_pytrec(run_rerank, k=10)
+        
+        print("\nBM25 + Reranker Results:")
+        for metric, val in results_rerank.items():
+            print(f"  {metric}: {val:.4f}")
+        print("BM25 + Reranker (pytrec_eval):")
+        for metric, val in results_rerank_trec.items():
+            print(f"  {metric}: {val:.4f}")
+    else:
+        print("\nBM25 + Reranker Results: skipped (reranker unavailable)")
     
     # === 비교 ===
     print("\n" + "=" * 60)
     print("Comparison")
     print("=" * 60)
-    print(f"{'Metric':<12} {'BM25':>10} {'TF-IDF':>10} {'Hybrid':>10} {'Reranker':>10}")
-    print("-" * 54)
+    print(f"{'Metric':<12} {'BM25':>10} {'Reranker':>10} {'Diff':>10}")
+    print("-" * 44)
     
-    for metric in results_bm25:
-        v_bm25 = results_bm25[metric]
-        v_tfidf = results_tfidf[metric]
-        v_hybrid = results_hybrid[metric]
-        v_rerank = results_rerank[metric]
-        print(f"{metric:<12} {v_bm25:>10.4f} {v_tfidf:>10.4f} {v_hybrid:>10.4f} {v_rerank:>10.4f}")
+    if results_rerank:
+        for metric in results_bm25:
+            v1 = results_bm25[metric]
+            v2 = results_rerank[metric]
+            diff = v2 - v1
+            sign = "+" if diff > 0 else ""
+            print(f"{metric:<12} {v1:>10.4f} {v2:>10.4f} {sign}{diff:>9.4f}")
     
     # 결과 저장
     summary_path = os.path.join(RESULTS_DIR, f"summary_{split}.txt")
@@ -192,38 +130,32 @@ def run_eval(split="validation", include_dense=False):
         f.write("BM25:\n")
         for m, v in results_bm25.items():
             f.write(f"  {m}: {v:.4f}\n")
-        
-        f.write("\nTF-IDF:\n")
-        for m, v in results_tfidf.items():
+        f.write("\nBM25 (pytrec_eval):\n")
+        for m, v in results_bm25_trec.items():
             f.write(f"  {m}: {v:.4f}\n")
         
-        f.write("\nHybrid (BM25 + TF-IDF):\n")
-        for m, v in results_hybrid.items():
-            f.write(f"  {m}: {v:.4f}\n")
-        
-        if results_dense:
-            f.write("\nDense:\n")
-            for m, v in results_dense.items():
+        if results_rerank:
+            f.write("\nBM25 + Reranker:\n")
+            for m, v in results_rerank.items():
                 f.write(f"  {m}: {v:.4f}\n")
-        
-        if results_hybrid_dense:
-            f.write("\nHybrid (BM25 + Dense):\n")
-            for m, v in results_hybrid_dense.items():
+            f.write("\nBM25 + Reranker (pytrec_eval):\n")
+            for m, v in results_rerank_trec.items():
                 f.write(f"  {m}: {v:.4f}\n")
-        
-        f.write("\nBM25 + Reranker:\n")
-        for m, v in results_rerank.items():
-            f.write(f"  {m}: {v:.4f}\n")
+        else:
+            f.write("\nBM25 + Reranker:\n  skipped (reranker unavailable)\n")
         
         f.write("\nComparison:\n")
-        f.write(f"{'Metric':<12} {'BM25':>10} {'TF-IDF':>10} {'Hybrid':>10} {'Reranker':>10}\n")
-        f.write("-" * 54 + "\n")
-        for metric in results_bm25:
-            v_bm25 = results_bm25[metric]
-            v_tfidf = results_tfidf[metric]
-            v_hybrid = results_hybrid[metric]
-            v_rerank = results_rerank[metric]
-            f.write(f"{metric:<12} {v_bm25:>10.4f} {v_tfidf:>10.4f} {v_hybrid:>10.4f} {v_rerank:>10.4f}\n")
+        f.write(f"{'Metric':<12} {'BM25':>10} {'Reranker':>10} {'Diff':>10}\n")
+        f.write("-" * 44 + "\n")
+        if results_rerank:
+            for metric in results_bm25:
+                v1 = results_bm25[metric]
+                v2 = results_rerank[metric]
+                diff = v2 - v1
+                sign = "+" if diff > 0 else ""
+                f.write(f"{metric:<12} {v1:>10.4f} {v2:>10.4f} {sign}{diff:>9.4f}\n")
+        else:
+            f.write("Reranker comparison skipped.\n")
     
     print(f"\nResults saved to {summary_path}")
 
@@ -231,17 +163,7 @@ def run_eval(split="validation", include_dense=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--split", default="validation", 
-                       choices=["training", "validation", "test"],
-                       help="Dataset split to evaluate on")
-    parser.add_argument("--dense", action="store_true",
-                       help="Include dense retrieval evaluation (requires data/dense_index.pt)")
+                       choices=["training", "validation", "test"])
     args = parser.parse_args()
     
-    # Test set 사용 시 주의사항
-    if args.split == "test":
-        print("\n" + "!" * 60)
-        print("WARNING: Using test set for evaluation.")
-        print("Make sure you haven't tuned your system on test set!")
-        print("!" * 60 + "\n")
-    
-    run_eval(args.split, include_dense=args.dense)
+    run_eval(args.split)

@@ -19,83 +19,149 @@ st.set_page_config(
 # CSS 스타일
 st.markdown("""
 <style>
-    /* 구글 스타일 검색창 */
+    :root {
+        --bg: #fff5f7;
+        --bg-accent: #ffeef2;
+        --ink: #2b1f24;
+        --muted: #6b6b6b;
+        --accent: #d96b8c;
+        --accent-2: #f3a6bf;
+        --card: #ffffff;
+        --ring: rgba(217, 107, 140, 0.28);
+        --shadow: 0 10px 30px rgba(85, 45, 58, 0.08);
+    }
+
+    .stApp {
+        background:
+            radial-gradient(1200px 500px at 10% -10%, rgba(243, 166, 191, 0.25), transparent 60%),
+            radial-gradient(1000px 600px at 90% 0%, rgba(217, 107, 140, 0.18), transparent 60%),
+            linear-gradient(180deg, var(--bg) 0%, var(--bg-accent) 100%);
+        color: var(--ink);
+        font-family: "Garamond", "Palatino Linotype", "Book Antiqua", serif;
+    }
+
+    /* 검색 입력 */
     .stTextInput > div > div > input {
-        border-radius: 24px;
-        border: 1px solid #dfe1e5;
-        padding: 12px 20px;
-        font-size: 16px;
-        box-shadow: 0 2px 5px 1px rgba(64,60,67,.16);
-        transition: box-shadow 0.3s;
+        border-radius: 999px;
+        border: 1px solid rgba(31, 31, 31, 0.15);
+        padding: 14px 22px;
+        font-size: 17px;
+        background: #fff9fb;
+        box-shadow: 0 6px 16px rgba(85, 45, 58, 0.08);
+        transition: box-shadow 0.3s, border-color 0.3s;
     }
     .stTextInput > div > div > input:focus {
-        box-shadow: 0 2px 8px 1px rgba(64,60,67,.24);
-        border-color: transparent;
+        box-shadow: 0 0 0 6px var(--ring);
+        border-color: var(--accent);
         outline: none;
     }
-    
-    /* 결과 카드 스타일 */
+
+    /* 결과 카드 */
     .result-card {
-        padding: 20px 0;
-        border-bottom: 1px solid #ebebeb;
-        transition: background-color 0.2s;
+        padding: 18px 20px;
+        border: 1px solid rgba(31, 31, 31, 0.08);
+        border-radius: 16px;
+        background: var(--card);
+        box-shadow: var(--shadow);
+        margin-bottom: 16px;
+        animation: fadeUp 0.4s ease both;
     }
     .result-card:hover {
-        background-color: #f8f9fa;
+        transform: translateY(-2px);
+        box-shadow: 0 16px 40px rgba(31, 31, 31, 0.12);
     }
-    
-    /* 하이라이트 스타일 */
+
+    @keyframes fadeUp {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .result-title {
+        margin: 0;
+        font-size: 20px;
+        color: #4b2a35;
+    }
+
+    .result-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+        margin: 8px 0 6px 0;
+        font-size: 13px;
+        color: #7b5a66;
+    }
+
+    .rank-badge {
+        background: var(--accent);
+        color: #fff;
+        border-radius: 999px;
+        padding: 2px 10px;
+        font-size: 12px;
+        letter-spacing: 0.3px;
+    }
+
+    .doc-id {
+        font-family: "Courier New", monospace;
+        color: #6b3a4c;
+        background: rgba(217, 107, 140, 0.12);
+        padding: 2px 8px;
+        border-radius: 8px;
+    }
+
+    .score-pill {
+        background: rgba(243, 166, 191, 0.25);
+        color: #7a3b53;
+        padding: 2px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .score-bar {
+        width: 100%;
+        height: 8px;
+        background: rgba(217, 107, 140, 0.18);
+        border-radius: 999px;
+        overflow: hidden;
+        margin-top: 8px;
+    }
+    .score-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #d96b8c, #f3a6bf);
+        border-radius: 999px;
+        transition: width 0.3s ease;
+    }
+
+    .snippet {
+        color: #3b2a30;
+        font-size: 14px;
+        line-height: 1.6;
+        margin-top: 4px;
+    }
+
+    /* 하이라이트 */
     .highlight {
-        background-color: #fff176;
+        background-color: #ffe1ea;
         padding: 2px 0;
-        font-weight: 500;
+        font-weight: 600;
     }
-    
-    /* 점수 배지 */
-    .score-badge {
-        display: inline-block;
-        padding: 4px 8px;
-        border-radius: 12px;
-        background-color: #e8f0fe;
-        color: #1967d2;
-        font-size: 11px;
-        font-weight: 500;
-    }
-    
-    /* 메인 컨테이너 */
-    .main-container {
-        max-width: 650px;
-        margin: 0 auto;
-        padding: 20px;
-    }
-    
+
     /* 검색 통계 */
-    .search-stats {
-        color: #70757a;
-        font-size: 14px;
-        padding: 10px 0;
+    .stats-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin: 8px 0 18px 0;
     }
-    
-    /* 필터 버튼 */
-    .filter-btn {
-        padding: 8px 16px;
-        border-radius: 18px;
-        border: 1px solid #dadce0;
-        background: white;
-        cursor: pointer;
-        font-size: 14px;
-        margin-right: 8px;
-        transition: all 0.2s;
+    .stat-chip {
+        background: rgba(217, 107, 140, 0.12);
+        color: #7b5a66;
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 13px;
     }
-    .filter-btn:hover {
-        box-shadow: 0 1px 2px rgba(60,64,67,.3);
-    }
-    .filter-btn.active {
-        background-color: #1a73e8;
-        color: white;
-        border-color: #1a73e8;
-    }
-    
+
     /* 페이지네이션 */
     .pagination {
         display: flex;
@@ -104,21 +170,7 @@ st.markdown("""
         gap: 20px;
         padding: 30px 0;
     }
-    
-    /* 로딩 애니메이션 */
-    @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.5; }
-    }
-    .loading {
-        animation: pulse 1.5s ease-in-out infinite;
-    }
-    
-    /* 숨기기 */
-    .hide {
-        display: none;
-    }
-    
+
     /* 헤더 숨기기 */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -265,7 +317,15 @@ def main():
         st.session_state.use_expansion_opt = False
     if 'hybrid_weight' not in st.session_state:
         st.session_state.hybrid_weight = 0.6
-    
+    if 'pending_query' not in st.session_state:
+        st.session_state.pending_query = None
+
+    if st.session_state.pending_query:
+        st.session_state.search_input = st.session_state.pending_query
+        st.session_state.pending_query = None
+        st.session_state.search_results = None
+        st.session_state.current_page = 1
+
     engine = load_engine()
     
     if engine is None:
@@ -280,7 +340,10 @@ def main():
         with col2:
             st.markdown("<br><br>", unsafe_allow_html=True)
             st.markdown(
-                '<h1 style="text-align: center; font-size: 90px; margin-bottom: 30px;">🔍</h1>',
+                '<div style="text-align: center; margin-bottom: 30px;">'
+                '<div style="font-size: 90px; font-weight: 800; font-style: italic; color: #ff5c8a; letter-spacing: 2px;">SAP</div>'
+                '<div style="font-size: 20px; color: #ff8fb0; margin-top: 6px;">Search Anything Positively</div>'
+                '</div>',
                 unsafe_allow_html=True
             )
             
@@ -301,23 +364,49 @@ def main():
             # 검색어 업데이트
             query = query_input.strip() if query_input else ""
             
-            # 필터 옵션 (검색 전에 표시)
-            if not st.session_state.search_results:
-                st.markdown("<br>", unsafe_allow_html=True)
-                filter_cols = st.columns(5)
-                methods = [
-                    ("BM25", "bm25"),
-                    ("TF-IDF", "tfidf"),
-                    ("하이브리드", "hybrid"),
-                    ("리랭커", "rerank"),
-                    ("쿼리 확장", "expansion")
-                ]
-                for i, (label, method) in enumerate(methods):
-                    with filter_cols[i]:
-                        if st.button(label, key=f"filter_{method}", use_container_width=True):
-                            st.session_state.filter_method = method
-    
-    # 사이드바 (고급 설정) - 먼저 정의
+            # ?? ?? (?? ??)
+            st.markdown("<br>", unsafe_allow_html=True)
+            filter_cols = st.columns(5)
+            methods = [
+                ("BM25", "bm25"),
+                ("TF-IDF", "tfidf"),
+                ("하이브리드", "hybrid"),
+                ("리랭커", "rerank"),
+                ("쿼리 확장", "expansion"),
+            ]
+            for i, (label, method) in enumerate(methods):
+                with filter_cols[i]:
+                    is_active = (
+                        st.session_state.filter_method == method
+                        or (method == "rerank" and st.session_state.use_reranker_opt)
+                        or (method == "expansion" and st.session_state.use_expansion_opt)
+                    )
+                    button_label = f"[ON] {label}" if is_active else label
+                    if st.button(button_label, key=f"filter_{method}", use_container_width=True):
+                        st.session_state.filter_method = method
+                        if method == "bm25":
+                            st.session_state.method_option = "BM25"
+                        elif method == "tfidf":
+                            st.session_state.method_option = "TF-IDF"
+                        elif method == "hybrid":
+                            st.session_state.method_option = "하이브리드"
+                        elif method == "rerank":
+                            st.session_state.use_reranker_opt = True
+                        elif method == "expansion":
+                            st.session_state.use_expansion_opt = True
+            active_method = st.session_state.method_option
+            if st.session_state.filter_method in ["bm25", "tfidf", "hybrid"]:
+                active_method = {"bm25": "BM25", "tfidf": "TF-IDF", "hybrid": "하이브리드"}[st.session_state.filter_method]
+            rerank_active = st.session_state.use_reranker_opt or st.session_state.filter_method == "rerank"
+            expansion_active = st.session_state.use_expansion_opt or st.session_state.filter_method == "expansion"
+            chips = [
+                f"방법: {active_method}",
+                f"리랭커: {"ON" if rerank_active else "OFF"}",
+                f"쿼리 확장: {"ON" if expansion_active else "OFF"}",
+            ]
+            if active_method == "하이브리드":
+                chips.append(f"BM25 가중치: {st.session_state.hybrid_weight:.1f}")
+            st.caption(" | ".join(chips))
     with st.sidebar:
         st.header("⚙️ 고급 설정")
         
@@ -349,6 +438,7 @@ def main():
     
     # 검색 실행
     if (search_clicked or query) and query.strip():
+        status = st.status("검색 중...", expanded=False) if hasattr(st, "status") else None
         with st.spinner("검색 중..."):
             start_time = time.time()
             
@@ -375,6 +465,8 @@ def main():
             st.session_state.search_results = result
             st.session_state.search_time = elapsed
             st.session_state.current_page = 1
+            if status:
+                status.update(label=f"검색 완료 ({elapsed:.2f}s)", state="complete")
     
     # 검색 결과 표시
     if st.session_state.search_results:
@@ -382,8 +474,10 @@ def main():
         
         # 검색 통계
         st.markdown(f"""
-        <div class="search-stats">
-            약 {len(result['results']):,}개 결과 ({st.session_state.search_time:.3f}초)
+        <div class="stats-bar">
+            <span class="stat-chip">Results: {len(result['results']):,}</span>
+            <span class="stat-chip">Time: {st.session_state.search_time:.3f}s</span>
+            <span class="stat-chip">Method: {result['method']}</span>
         </div>
         """, unsafe_allow_html=True)
         
@@ -398,9 +492,8 @@ def main():
             cols = st.columns(len(examples))
             for i, ex in enumerate(examples):
                 if cols[i].button(ex, key=f"ex_no_results_{i}"):
-                    # 검색어를 세션 상태에 저장하고 검색 실행
-                    st.session_state.search_input = ex
-                    st.session_state.search_results = None  # 결과 초기화
+                    # 瓴€?夓柎毳??胳厴 ?來儨리랭커€?ロ晿瓿?瓴€리랭커ろ枆
+                    st.session_state.pending_query = ex
                     st.rerun()
         else:
             # 페이지네이션 계산
@@ -409,6 +502,7 @@ def main():
             start_idx = (st.session_state.current_page - 1) * st.session_state.results_per_page
             end_idx = start_idx + st.session_state.results_per_page
             page_results = result['results'][start_idx:end_idx]
+            max_score = max((r['score'] for r in result['results']), default=1.0) or 1.0
             
             # 결과 표시
             for r in page_results:
@@ -416,6 +510,7 @@ def main():
                 score = r['score']
                 snippet = r['snippet']
                 full_text = engine.get_document(doc_id)
+                score_pct = min(100.0, (score / max_score) * 100.0) if max_score > 0 else 0.0
                 
                 # 제목 추출
                 title = extract_title(full_text, result['query'])
@@ -427,18 +522,17 @@ def main():
                 # 결과 카드
                 st.markdown(f"""
                 <div class="result-card">
-                    <h3 style="margin: 0; font-size: 20px; color: #1a0dab; margin-bottom: 5px;">
-                        {highlighted_title}
-                    </h3>
-                    <div style="color: #006621; font-size: 14px; margin-bottom: 8px;">
-                        Document ID: {doc_id}
+                    <h3 class="result-title">{highlighted_title}</h3>
+                    <div class="result-meta">
+                        <span class="rank-badge">Rank {r['rank']}</span>
+                        <span class="doc-id">{doc_id}</span>
+                        <span class="score-pill">Score {score:.4f}</span>
                     </div>
-                    <div style="color: #545454; font-size: 14px; line-height: 1.6; margin-bottom: 8px;">
+                    <div class="snippet">
                         {highlighted_snippet if highlighted_snippet else snippet}
                     </div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span class="score-badge">점수: {score:.4f}</span>
-                        <span style="color: #70757a; font-size: 12px;">랭크 #{r['rank']}</span>
+                    <div class="score-bar" title="Relative score">
+                        <div class="score-bar-fill" style="width: {score_pct:.1f}%;"></div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
