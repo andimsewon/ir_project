@@ -1,6 +1,6 @@
 ﻿# SAP (Search Anything Positively)
 
-직접 구현한 IR(Information Retrieval) 검색 엔진 프로젝트입니다. 역색인 기반 BM25/TF-IDF/하이브리드 랭킹부터 쿼리 확장, 리랭커, Dense/SPLADE까지 실험할 수 있고, Streamlit UI로 데모가 가능합니다.
+직접 구현한 IR(Information Retrieval) 검색 엔진 프로젝트입니다. 역색인 기반 BM25/TF-IDF 랭킹부터 쿼리 확장, 리랭커, Dense/SPLADE, ANN(FAISS)까지 실험할 수 있고, Streamlit UI로 데모가 가능합니다.
 
 ---
 
@@ -26,7 +26,7 @@
 
 ### 특징
 - 완전 자체 구현: 인덱싱/랭킹 로직 직접 구현
-- 다양한 랭킹 방법: BM25, TF-IDF, 하이브리드
+- 다양한 랭킹 방법: BM25, TF-IDF
 - 고급 기능: 쿼리 확장, Cross-Encoder 리랭커
 - 평가: pytrec_eval 기반 MAP/P@k/nDCG
 - UI: Streamlit 웹 UI + 터미널 CLI
@@ -45,7 +45,7 @@
 
 사용자 쿼리 입력
 → Query Processor (토크나이징, 쿼리 확장 선택)
-→ Retrieval/Ranking (BM25/TF-IDF/Hybrid/Dense/SPLADE)
+→ Retrieval/Ranking (BM25/TF-IDF/Dense/SPLADE)
 → Reranker (선택, Cross-Encoder)
 → 결과 출력 (스니펫/하이라이트, 페이지네이션)
 
@@ -56,6 +56,7 @@
 - Query Expander: `src/query_expander.py`
 - Reranker: `src/reranker.py`
 - Dense/SPLADE: `src/dense_retriever.py`, `src/splade_retriever.py`
+- ANN(FAISS): `src/dense_retriever.py`
 - UI: `app.py` (Streamlit), `cli_search.py` (CLI)
 
 ---
@@ -66,15 +67,14 @@
 - Inverted Index 구축 (posting list, DF, doc length, doc store)
 - BM25 랭킹 (k1=1.5, b=0.75)
 - TF-IDF 랭킹
-- 하이브리드 랭킹 (BM25 + TF-IDF 가중 결합)
-- Streamlit 웹 UI
+- Streamlit 웹 UI (SPLADE 고정 + 리랭커/쿼리 확장 토글)
 
 ### 추가 기능
 - 쿼리 확장 (동의어/공출현/임베딩 기반)
-- Cross-Encoder 리랭킹 (`cross-encoder/ms-marco-MiniLM-L-6-v2`)
-- 하이라이팅, 페이지네이션, 필터/옵션 표시
-- Dense retrieval (옵션, `BAAI/bge-base-en-v1.5`)
-- SPLADE (옵션, `naver/splade-cocondenser-ensembledistil`)
+- Cross-Encoder 리랭킹 (`BAAI/bge-reranker-base` 기본)
+- 하이라이팅, 페이지네이션, 토글 옵션 표시
+- Dense retrieval + ANN (옵션, `BAAI/bge-base-en-v1.5`, FAISS HNSW)
+- SPLADE (필수, `naver/splade-cocondenser-ensembledistil`)
 
 ---
 
@@ -142,7 +142,7 @@ Streamlit/CLI는 `torch-directml`이 설치되어 있으면 자동으로 DirectM
 
 ### 4-2) Dense + ANN 인덱스 빌드 (선택)
 
-FAISS가 설치되어 있으면 ANN 인덱스를 자동 생성하며, 검색 시 ANN을 사용합니다.
+FAISS가 설치되어 있으면 ANN 인덱스를 자동 생성하며, 평가 시 ANN 검색을 사용합니다.
 ANN 검색은 CPU에서 동작하고, 임베딩 인코딩은 `--device dml`로 Intel Arc GPU를 사용합니다.
 현재 Streamlit/CLI는 SPLADE 전용으로 동작합니다. Dense ANN은 별도 실험용 인덱스입니다.
 
@@ -163,6 +163,13 @@ streamlit run app.py
 ```
 
 브라우저에서 `http://localhost:8501` 접속
+
+### 5-1) 웹 UI 사용 방법 (SPLADE 고정)
+
+1) 검색어 입력 후 Enter 또는 `검색` 버튼 클릭  
+2) 결과 카드에서 제목/스니펫/점수 확인  
+3) 페이지네이션으로 결과 이동  
+4) Reranker / Query Expansion 토글로 옵션 변경  
 
 ### 6) CLI 실행 (선택)
 
@@ -210,10 +217,33 @@ python run_eval.py --split validation
 python run_eval.py --split test
 ```
 
+SPLADE 평가:
+
+```bash
+python run_eval.py --split validation --method splade
+python run_eval.py --split test --method splade
+```
+
+Dense ANN 평가:
+
+```bash
+python run_eval.py --split validation --method dense_ann
+python run_eval.py --split test --method dense_ann
+```
+
+BM25 vs Reranker 비교(기본):
+
+```bash
+python run_eval.py --split validation
+python run_eval.py --split test
+```
+
 ### 결과 위치
 - `results/summary_validation.txt`
 - `results/summary_test.txt`
 - `results/bm25_*.txt`, `results/tfidf_*.txt`, `results/hybrid_*.txt`, `results/rerank_*.txt`
+- `results/summary_splade_*.txt`, `results/splade_*.txt`
+- `results/summary_dense_ann_*.txt`, `results/dense_ann_*.txt`
 
 ### 측정 지표
 - MAP, Precision@k, Recall@k, nDCG
@@ -250,7 +280,7 @@ ir_project/
 ├─ download_data_direct.py  # 직접 다운로드 대안
 ├─ process_manual_download.py
 ├─ build_index.py           # BM25 index 빌드
-├─ build_dense_index.py     # Dense index 빌드
+├─ build_dense_index.py     # Dense + ANN index 빌드
 ├─ build_splade_index.py    # SPLADE index 빌드
 ├─ run_eval.py              # 평가 실행
 ├─ check_data.py            # 데이터 확인
@@ -266,7 +296,7 @@ ir_project/
 │  ├─ dense_retriever.py
 │  ├─ splade_retriever.py
 │  └─ evaluator.py
-├─ data/                    # documents.tsv, queries_*.tsv, qrels_*.tsv, index.pkl
+├─ data/                    # documents.tsv, queries_*.tsv, qrels_*.tsv, index.pkl, splade_index.pt, dense_index.pt, dense_index.faiss
 └─ results/                 # 평가 결과
 ```
 

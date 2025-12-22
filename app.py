@@ -202,7 +202,11 @@ def load_engine():
     tfidf_ranker = TFIDFRanker(index)
     
     # 최적화된 리랭커 (균형잡힌 성능)
-    reranker = CrossEncoderReranker(model_size="balanced")
+    reranker = None
+    try:
+        reranker = CrossEncoderReranker(model_size="balanced")
+    except Exception as exc:
+        print(f"[Warning] Reranker disabled: {exc}")
     
     # 임베딩 기반 쿼리 확장 (선택적)
     query_expander = QueryExpander(index, use_embedding=False)  # False로 설정하면 빠름
@@ -317,9 +321,9 @@ def main():
     if 'results_per_page' not in st.session_state:
         st.session_state.results_per_page = 10
     if 'filter_method' not in st.session_state:
-        st.session_state.filter_method = "bm25"
+        st.session_state.filter_method = "splade"
     if 'method_option' not in st.session_state:
-        st.session_state.method_option = "BM25"
+        st.session_state.method_option = "SPLADE"
     if 'use_reranker_opt' not in st.session_state:
         st.session_state.use_reranker_opt = False
     if 'use_expansion_opt' not in st.session_state:
@@ -342,7 +346,12 @@ def main():
         st.code("python download_data.py\npython build_index.py\npython build_splade_index.py", language="bash")
         return
 
-    engine = load_engine()
+    try:
+        engine = load_engine()
+    except Exception as exc:
+        st.error(f"Engine load failed: {exc}")
+        st.code("python download_data.py\npython build_index.py\npython build_splade_index.py", language="bash")
+        return
     
     if engine is None:
         st.error("⚠️ 인덱스를 찾을 수 없습니다. 먼저 다음 명령을 실행하세요:")
@@ -382,46 +391,21 @@ def main():
             
             # ?? ?? (?? ??)
             st.markdown("<br>", unsafe_allow_html=True)
-            filter_cols = st.columns(5)
-            methods = [
-                ("BM25", "bm25"),
-                ("TF-IDF", "tfidf"),
-                ("하이브리드", "hybrid"),
-                ("리랭커", "rerank"),
-                ("쿼리 확장", "expansion"),
-            ]
-            for i, (label, method) in enumerate(methods):
-                with filter_cols[i]:
-                    is_active = (
-                        st.session_state.filter_method == method
-                        or (method == "rerank" and st.session_state.use_reranker_opt)
-                        or (method == "expansion" and st.session_state.use_expansion_opt)
-                    )
-                    button_label = f"[ON] {label}" if is_active else label
-                    if st.button(button_label, key=f"filter_{method}", use_container_width=True):
-                        st.session_state.filter_method = method
-                        if method == "bm25":
-                            st.session_state.method_option = "BM25"
-                        elif method == "tfidf":
-                            st.session_state.method_option = "TF-IDF"
-                        elif method == "hybrid":
-                            st.session_state.method_option = "하이브리드"
-                        elif method == "rerank":
-                            st.session_state.use_reranker_opt = True
-                        elif method == "expansion":
-                            st.session_state.use_expansion_opt = True
-            active_method = st.session_state.method_option
-            if st.session_state.filter_method in ["bm25", "tfidf", "hybrid"]:
-                active_method = {"bm25": "BM25", "tfidf": "TF-IDF", "hybrid": "하이브리드"}[st.session_state.filter_method]
-            rerank_active = st.session_state.use_reranker_opt or st.session_state.filter_method == "rerank"
-            expansion_active = st.session_state.use_expansion_opt or st.session_state.filter_method == "expansion"
+            toggle_cols = st.columns(2)
+            with toggle_cols[0]:
+                label = "Reranker: ON" if st.session_state.use_reranker_opt else "Reranker: OFF"
+                if st.button(label, key="toggle_reranker", use_container_width=True):
+                    st.session_state.use_reranker_opt = not st.session_state.use_reranker_opt
+            with toggle_cols[1]:
+                label = "Query Expansion: ON" if st.session_state.use_expansion_opt else "Query Expansion: OFF"
+                if st.button(label, key="toggle_expansion", use_container_width=True):
+                    st.session_state.use_expansion_opt = not st.session_state.use_expansion_opt
+
             chips = [
-                f"방법: {active_method}",
-                f"리랭커: {"ON" if rerank_active else "OFF"}",
-                f"쿼리 확장: {"ON" if expansion_active else "OFF"}",
+                "Method: SPLADE (fixed)",
+                f"Reranker: {'ON' if st.session_state.use_reranker_opt else 'OFF'}",
+                f"Query Expansion: {'ON' if st.session_state.use_expansion_opt else 'OFF'}",
             ]
-            if active_method == "하이브리드":
-                chips.append(f"BM25 가중치: {st.session_state.hybrid_weight:.1f}")
             st.caption(" | ".join(chips))
     with st.sidebar:
         st.header("⚙️ 고급 설정")
@@ -434,23 +418,19 @@ def main():
         
         st.markdown("---")
         st.markdown("**검색 방법**")
-        method_option = st.selectbox(
-            "랭킹 방법",
-            ["BM25", "TF-IDF", "하이브리드"],
-            index=["BM25", "TF-IDF", "하이브리드"].index(st.session_state.method_option) if st.session_state.method_option in ["BM25", "TF-IDF", "하이브리드"] else 0,
-            key="method_selectbox"
-        )
-        st.session_state.method_option = method_option
+        st.caption("SPLADE (fixed)")
         
-        use_reranker_opt = st.checkbox("리랭커 사용", value=st.session_state.use_reranker_opt, key="reranker_checkbox")
+        reranker_available = engine.reranker is not None
+        use_reranker_opt = st.checkbox("??? ??", value=st.session_state.use_reranker_opt, key="reranker_checkbox", disabled=not reranker_available)
+        if not reranker_available:
+            st.caption("Reranker unavailable")
+            st.session_state.use_reranker_opt = False
         st.session_state.use_reranker_opt = use_reranker_opt
         
         use_expansion_opt = st.checkbox("쿼리 확장", value=st.session_state.use_expansion_opt, key="expansion_checkbox")
         st.session_state.use_expansion_opt = use_expansion_opt
         
-        if method_option == "하이브리드":
-            hybrid_weight = st.slider("BM25 가중치", 0.0, 1.0, st.session_state.hybrid_weight, 0.1, key="hybrid_slider")
-            st.session_state.hybrid_weight = hybrid_weight
+        
     
     # 검색 실행
     if (search_clicked or query) and query.strip():
@@ -459,23 +439,22 @@ def main():
             start_time = time.time()
             
             # 필터에 따른 검색 설정
-            use_reranker = st.session_state.filter_method == "rerank" or st.session_state.use_reranker_opt
-            use_expansion = st.session_state.filter_method == "expansion" or st.session_state.use_expansion_opt
-            method = "bm25"
-            
-            if st.session_state.filter_method == "tfidf" or st.session_state.method_option == "TF-IDF":
-                method = "tfidf"
-            elif st.session_state.filter_method == "hybrid" or st.session_state.method_option == "하이브리드":
-                method = "hybrid"
-            
-            result = engine.search(
-                query,
-                top_k=100,  # 더 많은 결과를 가져와서 페이지네이션
-                method=method,
-                use_reranker=use_reranker,
-                use_query_expansion=use_expansion,
-                hybrid_weight=st.session_state.hybrid_weight
-            )
+            use_reranker = st.session_state.use_reranker_opt
+            use_expansion = st.session_state.use_expansion_opt
+            method = "splade"
+
+            try:
+                result = engine.search(
+                    query,
+                    top_k=100,  # 더 많은 결과를 가져와서 페이지네이션
+                    method=method,
+                    use_reranker=use_reranker,
+                    use_query_expansion=use_expansion,
+                    hybrid_weight=st.session_state.hybrid_weight
+                )
+            except Exception as exc:
+                st.error(f"Search failed: {exc}")
+                return
             
             elapsed = time.time() - start_time
             st.session_state.search_results = result

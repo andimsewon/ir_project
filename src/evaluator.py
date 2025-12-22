@@ -50,7 +50,7 @@ class Evaluator:
                     queries[parts[0]] = parts[1]
         return queries
     
-    def generate_run(self, search_engine, use_reranker=False, top_k=100):
+    def generate_run(self, search_engine, use_reranker=False, top_k=100, method=None):
         """
         전체 쿼리에 대해 검색 실행
         
@@ -62,7 +62,8 @@ class Evaluator:
             result = search_engine.search(
                 query_text,
                 top_k=top_k,
-                use_reranker=use_reranker
+                use_reranker=use_reranker,
+                method=method
             )
             run[qid] = [(r['doc_id'], r['score']) for r in result['results']]
         
