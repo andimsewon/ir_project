@@ -213,3 +213,144 @@ class SearchEngine:
         """Return full document text."""
         return self.index.get_document(doc_id)
 
+    def explain_doc(self, query, doc_id, method="bm25"):
+        """Explain scoring for a single document and query.
+
+        Returns a dict with per-term contributions and doc stats. For unsupported
+        methods, returns an empty explanation.
+
+        Structure:
+            {
+              'method': 'BM25' | 'TF-IDF' | 'N/A',
+              'doc_id': str,
+              'doc_len': int,
+              'avg_doc_len': float,
+              'terms': [
+                  {
+                    'term': str,
+                    'tf': int,
+                    'idf': float,
+                    'q_weight': float | None,
+                    'score': float
+                  }, ...
+              ],
+              'total': float
+            }
+        """
+        method = (method or "bm25").lower()
+        # Only lexical methods are explainable here
+        explainable = {"bm25", "tfidf", "hybrid"}
+        if method not in explainable:
+            return {
+                "method": "N/A",
+                "doc_id": doc_id,
+                "doc_len": self.index.doc_len.get(doc_id, 0),
+                "avg_doc_len": self.index.avg_doc_len,
+                "terms": [],
+                "total": 0.0,
+            }
+
+        # Use tokenization consistent with rankers
+        terms_q = self.tokenizer.tokenize(query)
+        if not terms_q:
+            return {
+                "method": method.upper(),
+                "doc_id": doc_id,
+                "doc_len": self.index.doc_len.get(doc_id, 0),
+                "avg_doc_len": self.index.avg_doc_len,
+                "terms": [],
+                "total": 0.0,
+            }
+
+        # Helper: fetch tf of a term in a document
+        def tf_in_doc(term, doc_id):
+            posting = self.index.get_posting(term)
+            for d, tf in posting:
+                if d == doc_id:
+                    return tf
+            return 0
+
+        # Compute BM25 components
+        def bm25_idf(term):
+            N = self.index.total_docs
+            df = self.index.get_doc_freq(term)
+            return math.log((N - df + 0.5) / (df + 0.5) + 1)
+
+        # Compute TF-IDF components
+        def tfidf_idf(term):
+            total_docs = self.index.total_docs or 0
+            df = self.index.get_doc_freq(term)
+            return math.log((total_docs + 1) / (df + 1)) + 1.0
+
+        def tf_log(freq):
+            if freq <= 0:
+                return 0.0
+            return 1.0 + math.log(freq)
+
+        import math  # local import to avoid top-level change
+        doc_len = self.index.doc_len.get(doc_id, 0) or 1
+        avgdl = self.index.avg_doc_len or 1.0
+
+        # When hybrid, use BM25 explanation by default
+        method_key = "bm25" if method == "hybrid" else method
+
+        details = []
+        total = 0.0
+
+        if method_key == "bm25":
+            k1 = getattr(self.bm25_ranker, "k1", 1.5)
+            b = getattr(self.bm25_ranker, "b", 0.75)
+            for term in terms_q:
+                tf = tf_in_doc(term, doc_id)
+                if tf <= 0:
+                    continue
+                idf = bm25_idf(term)
+                numerator = tf * (k1 + 1)
+                denominator = tf + k1 * (1 - b + b * doc_len / avgdl)
+                score = idf * (numerator / denominator)
+                total += score
+                details.append({
+                    "term": term,
+                    "tf": tf,
+                    "idf": idf,
+                    "q_weight": None,
+                    "score": score,
+                })
+            return {
+                "method": "BM25",
+                "doc_id": doc_id,
+                "doc_len": doc_len,
+                "avg_doc_len": avgdl,
+                "terms": details,
+                "total": total,
+            }
+
+        # TF-IDF explanation
+        from collections import Counter
+        q_tf = Counter(terms_q)
+        q_weights = {t: tf_log(f) for t, f in q_tf.items()}
+        for term, q_w in q_weights.items():
+            tf = tf_in_doc(term, doc_id)
+            if tf <= 0:
+                continue
+            idf = tfidf_idf(term)
+            doc_tf = tf_log(tf)
+            score = (doc_tf * idf) * q_w / doc_len
+            total += score
+            details.append({
+                "term": term,
+                "tf": tf,
+                "idf": idf,
+                "q_weight": q_w,
+                "score": score,
+            })
+
+        return {
+            "method": "TF-IDF",
+            "doc_id": doc_id,
+            "doc_len": doc_len,
+            "avg_doc_len": avgdl,
+            "terms": details,
+            "total": total,
+        }
+

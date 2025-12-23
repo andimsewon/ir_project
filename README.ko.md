@@ -73,6 +73,10 @@
 - 쿼리 확장 (동의어/공출현/임베딩 기반)
 - Cross-Encoder 리랭킹 (`BAAI/bge-reranker-base` 기본)
 - 하이라이팅, 페이지네이션, 토글 옵션 표시
+- 결과 점수 설명(Explain): BM25/TF‑IDF 용어별 기여도 시각 요약
+- 사이드바 Query Analyzer: 토큰/DF/IDF 표로 쿼리 해석
+- Related Queries: 상위 문서에서 TF×IDF가 높은 용어를 버튼으로 제안
+- 현재 검색 결과를 TREC run 포맷으로 다운로드
 - Dense retrieval + ANN (옵션, `BAAI/bge-base-en-v1.5`, FAISS HNSW)
 - SPLADE (필수, `naver/splade-cocondenser-ensembledistil`)
 
@@ -175,6 +179,15 @@ streamlit run app_bm25.py
 ```
 
 이 모드에서는 검색 방법 선택/리랭커/쿼리 확장 없이 BM25만 동작합니다.
+
+### 5-2) 평가 대시보드 실행 (연구 비교용)
+
+여러 방법을 한 번에 평가(MAP/P@k/R@k/nDCG)하고 테이블/바 차트로 비교:
+
+```bash
+streamlit run app_eval.py
+```
+좌측에서 split/방법 선택 → Run Evaluation → 결과 테이블 확인 → 각 방법의 TREC run 다운로드 가능
 
 ### 5-1) 웹 UI 사용 방법 (검색 방법 선택, 기본 Dense)
 

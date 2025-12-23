@@ -367,6 +367,54 @@ def _method_descriptions():
     }
 
 
+def _related_queries(engine, result, top_docs=10, top_terms=6):
+    """Suggest related queries by mining top-ranked documents.
+
+    Picks high-IDF, frequent terms from top results, excluding query terms.
+    """
+    if not result or not result.get("results"):
+        return []
+
+    query_terms = set(re.findall(r"\b\w+\b", result.get("query", "").lower()))
+    # Collect term frequencies from top documents
+    from collections import Counter
+    tf = Counter()
+    idf_cache = {}
+
+    def idf(term: str) -> float:
+        if term in idf_cache:
+            return idf_cache[term]
+        try:
+            N = engine.index.total_docs or 1
+            df = engine.index.get_doc_freq(term)
+            val = __import__("math").log((N - df + 0.5) / (df + 0.5) + 1)
+        except Exception:
+            val = 0.0
+        idf_cache[term] = val
+        return val
+
+    top = result["results"][: max(1, top_docs)]
+    tokenizer = engine.tokenizer if hasattr(engine, "tokenizer") else None
+    for r in top:
+        text = engine.get_document(r["doc_id"]) or ""
+        terms = (
+            tokenizer.tokenize(text) if tokenizer else re.findall(r"\b\w+\b", text.lower())
+        )
+        tf.update(terms)
+
+    # Score terms by TF * IDF, remove stop-like very short tokens
+    scored = []
+    for term, freq in tf.items():
+        if not term or len(term) < 3:
+            continue
+        if term in query_terms:
+            continue
+        scored.append((term, freq * idf(term)))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return [t for t, _ in scored[:top_terms]]
+
+
 def main():
     if "search_results" not in st.session_state:
         st.session_state.search_results = None
@@ -497,6 +545,25 @@ def main():
             st.markdown(f"- Vocabulary: {len(engine.index.posting_list):,}")
             st.markdown(f"- Avg doc length: {engine.index.avg_doc_len:.1f}")
 
+        # Query analyzer
+        if st.session_state.get("search_input"):
+            st.markdown("---")
+            st.markdown("**Query Analyzer**")
+            qtext = st.session_state.get("search_input", "")
+            tokens = engine.tokenizer.tokenize(qtext) if engine else []
+            if tokens:
+                st.caption("Tokens with IDF (BM25)")
+                import math as _math
+                rows = []
+                for t in tokens:
+                    N = engine.index.total_docs or 1
+                    df = engine.index.get_doc_freq(t)
+                    idf = _math.log((N - df + 0.5) / (df + 0.5) + 1)
+                    rows.append((t, df, round(idf, 4)))
+                # Compact text table
+                st.text("term\tdf\tidf")
+                st.text("\n".join([f"{t}\t{df}\t{idf}" for t, df, idf in rows]))
+
         st.markdown("---")
         st.markdown("**Retrieval Options**")
         st.caption("Choose a method in the main panel.")
@@ -572,6 +639,16 @@ def main():
                     st.session_state.pending_query = ex
                     st.rerun()
         else:
+            # Related queries mined from top results
+            rel = _related_queries(engine, result)
+            if rel:
+                st.caption("Related queries:")
+                cols = st.columns(len(rel))
+                for i, ex in enumerate(rel):
+                    if cols[i].button(ex, key=f"ex_related_{i}"):
+                        st.session_state.pending_query = ex
+                        st.rerun()
+
             total_results = len(result["results"])
             total_pages = (total_results - 1) // st.session_state.results_per_page + 1
             start_idx = (st.session_state.current_page - 1) * st.session_state.results_per_page
@@ -612,8 +689,26 @@ def main():
                     unsafe_allow_html=True,
                 )
 
-                with st.expander("Full document", expanded=False):
-                    st.text_area("", full_text[:5000], height=200, key=f"full_{doc_id}", disabled=True)
+                # Detail controls: explain + full text
+                det_col1, det_col2, det_col3 = st.columns([1, 1, 6])
+                with det_col1:
+                    if st.button("Explain", key=f"explain_{doc_id}"):
+                        try:
+                            exp = engine.explain_doc(result["query"], doc_id, method=st.session_state.method_choice)
+                            if exp and exp.get("terms"):
+                                st.caption(f"Doc len: {exp['doc_len']}, avgdl: {exp['avg_doc_len']:.1f}")
+                                # Render per-term bars
+                                for tinfo in sorted(exp["terms"], key=lambda x: x["score"], reverse=True)[:12]:
+                                    bar = min(30, int(30 * (tinfo["score"] / (exp["total"] or tinfo["score"])) ))
+                                    st.text(f"{tinfo['term']:<16} | {'█'*bar} {tinfo['score']:.4f}")
+                                st.caption(f"Total score approx: {exp['total']:.4f}")
+                            else:
+                                st.caption("No lexical explanation available for this method.")
+                        except Exception as _exc:
+                            st.caption(f"Explain failed: {_exc}")
+                with det_col2:
+                    with st.expander("Full doc", expanded=False):
+                        st.text_area("", full_text[:5000], height=200, key=f"full_{doc_id}", disabled=True)
 
             if total_pages > 1:
                 st.markdown("<br>", unsafe_allow_html=True)
@@ -648,6 +743,22 @@ def main():
                 st.session_state.results_per_page = new_per_page
                 st.session_state.current_page = 1
                 st.rerun()
+
+            # Download current run in TREC format (adhoc single query)
+            if result.get("results"):
+                run_lines = []
+                qid = "adhoc"
+                run_name = f"{result.get('method','BM25').replace(' ', '_')}"
+                for rr in result["results"]:
+                    run_lines.append(
+                        f"{qid} Q0 {rr['doc_id']} {rr['rank']} {rr['score']:.6f} {run_name}\n"
+                    )
+                st.download_button(
+                    "Download run (TREC)",
+                    data="".join(run_lines),
+                    file_name=f"run_{run_name.lower()}_{qid}.txt",
+                    mime="text/plain",
+                )
 
 
 if __name__ == "__main__":

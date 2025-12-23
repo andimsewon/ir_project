@@ -92,6 +92,10 @@ User query input
 - Query expansion (synonym/co-occurrence/embedding-based)
 - Cross-Encoder reranking (`BAAI/bge-reranker-base` by default)
 - Highlighting, pagination, option toggles
+- Score explainability: term-level contributions for BM25/TF-IDF in the UI
+- Sidebar Query Analyzer: token/DF/IDF table for the current query
+- Related Queries mined from top results (TF×IDF), as one-click buttons
+- Download current results in TREC run format
 - Dense retrieval + ANN (optional, `BAAI/bge-base-en-v1.5`, FAISS HNSW)
 - SPLADE (required, `naver/splade-cocondenser-ensembledistil`)
 
@@ -204,6 +208,14 @@ This mode fixes the method to BM25 and disables reranker/query expansion.
 5) Toggle Reranker / Query Expansion options
 6) For hybrid methods, adjust the BM25 weight in the sidebar
 7) Use `Clear results` to reset the view
+
+### 5-2) Evaluation Dashboard (research comparison)
+
+Run a Streamlit page to evaluate multiple methods at once (MAP/P@k/R@k/nDCG), display tables and bar charts, and download TREC runs per method:
+
+```bash
+streamlit run app_eval.py
+```
 
 ### 6) Run the CLI (optional)
 
